@@ -5,6 +5,15 @@ use tokio::fs;
 use crate::models::FileChecksum;
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
+use futures_util::StreamExt;
+
+/// 文件下载进度事件
+#[derive(Debug, Clone, Serialize)]
+pub struct DownloadFileProgress {
+    pub downloaded: u64,
+    pub total: Option<u64>,
+    pub speed: f64,  // bytes/sec
+}
 
 /// API 响应缓存（URL → 响应体文本）
 static API_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
@@ -70,12 +79,18 @@ pub fn create_http_client(proxy: Option<String>) -> Result<reqwest::Client, Stri
 
 /// 下载文件到指定路径（内部共享函数）
 /// 被 download_file_to_path 和 download_and_extract 复用
-pub async fn download_file_impl(url: String, output_path: String, proxy: Option<String>) -> Result<String, String> {
+/// app: 可选 AppHandle，提供时每 200ms 发送一次 download_file_progress 事件
+pub async fn download_file_impl(
+    url: String,
+    output_path: String,
+    proxy: Option<String>,
+    app: Option<&tauri::AppHandle>,
+) -> Result<String, String> {
     tracing::info!("下载文件: {} -> {}", url, output_path);
     let start_time = std::time::Instant::now();
-    
+
     let client = create_http_client(proxy)?;
-    
+
     let response = client.get(&url)
         .send()
         .await
@@ -86,33 +101,74 @@ pub async fn download_file_impl(url: String, output_path: String, proxy: Option<
             tracing::error!("  是否连接错误: {}", e.is_connect());
             format!("Failed to download file: {}", e)
         })?;
-    
+
     let status = response.status();
-    
     if !status.is_success() {
         tracing::error!("❌ 下载失败，HTTP 状态码: {}", status);
         return Err(format!("Download failed with status: {}", status));
     }
-    
-    let bytes = response.bytes()
-        .await
-        .map_err(|e| {
-            tracing::error!("❌ 读取响应失败: {}", e);
-            format!("Failed to read response: {}", e)
+
+    let total_size = response.content_length();
+    let mut downloaded: u64 = 0;
+    let mut file_bytes: Vec<u8> = if let Some(total) = total_size {
+        Vec::with_capacity(total as usize)
+    } else {
+        Vec::new()
+    };
+
+    let mut stream = response.bytes_stream();
+    let mut last_emit = std::time::Instant::now();
+    let mut last_downloaded: u64 = 0;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| {
+            tracing::error!("❌ 读取响应流失败: {}", e);
+            format!("Failed to read response stream: {}", e)
         })?;
-    
-    let file_size = bytes.len();
-    
-    fs::write(&output_path, &bytes)
+        downloaded += chunk.len() as u64;
+        file_bytes.extend_from_slice(&chunk);
+
+        let now = std::time::Instant::now();
+        if now.duration_since(last_emit).as_millis() >= 200 {
+            let elapsed_secs = now.duration_since(last_emit).as_secs_f64();
+            let speed = if elapsed_secs > 0.0 {
+                (downloaded - last_downloaded) as f64 / elapsed_secs
+            } else {
+                0.0
+            };
+            last_downloaded = downloaded;
+            last_emit = now;
+
+            if let Some(app) = app {
+                let _ = app.emit("download_file_progress", DownloadFileProgress {
+                    downloaded,
+                    total: total_size,
+                    speed,
+                });
+            }
+        }
+    }
+
+    // 发送最终完成事件
+    if let Some(app) = app {
+        let _ = app.emit("download_file_progress", DownloadFileProgress {
+            downloaded,
+            total: total_size,
+            speed: 0.0,
+        });
+    }
+
+    let file_size = file_bytes.len();
+    fs::write(&output_path, &file_bytes)
         .await
         .map_err(|e| {
             tracing::error!("❌ 写入文件失败: {}", e);
             format!("Failed to write file: {}", e)
         })?;
-    
+
     let elapsed = start_time.elapsed();
     tracing::info!("下载成功: {} ({:.2} KB, {:.2}s)", output_path, file_size as f64 / 1024.0, elapsed.as_secs_f64());
-    
+
     Ok(format!("Downloaded to {}", output_path))
 }
 
@@ -121,7 +177,7 @@ pub async fn download_file_impl(url: String, output_path: String, proxy: Option<
 #[tauri::command]
 pub async fn download_file_to_path(url: String, file_path: String, target_dir: String, proxy: Option<String>) -> Result<String, String> {
     let full_path = Path::new(&target_dir).join(&file_path);
-    
+
     // 确保父目录存在
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent)
@@ -131,9 +187,9 @@ pub async fn download_file_to_path(url: String, file_path: String, target_dir: S
                 format!("Failed to create parent directory: {}", e)
             })?;
     }
-    
-    // 复用基础下载函数
-    download_file_impl(url, full_path.to_string_lossy().to_string(), proxy).await
+
+    // 复用基础下载函数（更新时不需要全局进度事件）
+    download_file_impl(url, full_path.to_string_lossy().to_string(), proxy, None).await
 }
 
 /// Tauri命令：获取远程哈希文件
@@ -375,8 +431,8 @@ pub async fn download_skin_zip(
     // 临时 ZIP 文件路径
     let temp_zip_path = Path::new(&skins_dir).join("temp_skin.zip");
     
-    // 下载文件
-    download_file_impl(url, temp_zip_path.to_string_lossy().to_string(), proxy).await?;
+    // 下载文件（皮肤下载不需要全局进度事件）
+    download_file_impl(url, temp_zip_path.to_string_lossy().to_string(), proxy, None).await?;
     
     // 创建目标文件夹（去掉 .zip 后缀）
     let skin_folder_name = skin_name.trim_end_matches(".zip");
@@ -466,7 +522,8 @@ pub async fn download_charts_batch(
             match download_file_impl(
                 url,
                 file_path.to_string_lossy().to_string(),
-                proxy.clone()
+                proxy.clone(),
+                None,
             ).await {
                 Ok(_) => tracing::debug!("  ✓ {}", file_name),
                 Err(e) => {
@@ -482,7 +539,8 @@ pub async fn download_charts_batch(
         match download_file_impl(
             video_url,
             video_path.to_string_lossy().to_string(),
-            proxy.clone()
+            proxy.clone(),
+            None,
         ).await {
             Ok(_) => tracing::debug!("  ✓ pv.mp4 (可选)"),
             Err(_) => tracing::debug!("  - pv.mp4 不存在或下载失败（正常）"),

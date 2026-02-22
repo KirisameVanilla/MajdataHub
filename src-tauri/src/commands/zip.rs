@@ -76,7 +76,7 @@ pub fn extract_zip(zip_path: String, target_dir: String) -> Result<String, Strin
 
 /// Tauri命令：下载并解压文件
 #[tauri::command]
-pub async fn download_and_extract(url: String, target_path: String, zip_path: String, proxy: Option<String>) -> Result<String, String> {
+pub async fn download_and_extract(app: tauri::AppHandle, url: String, target_path: String, zip_path: String, proxy: Option<String>) -> Result<String, String> {
     tracing::info!("开始下载并解压: {} -> {}", url, target_path);
     let start_time = std::time::Instant::now();
     
@@ -88,8 +88,8 @@ pub async fn download_and_extract(url: String, target_path: String, zip_path: St
             format!("Failed to create target directory: {}", e)
         })?;
     
-    // 下载文件
-    download_file_impl(url, zip_path.clone(), proxy).await?;
+    // 下载文件（传入 AppHandle 以便发送进度事件）
+    download_file_impl(url, zip_path.clone(), proxy, Some(&app)).await?;
     
     // 解压文件
     tracing::info!("开始解压 ZIP 文件...");

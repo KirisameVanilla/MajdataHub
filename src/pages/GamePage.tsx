@@ -6,7 +6,22 @@ import { usePathContext, useDownloadContext } from '../contexts';
 import { calculateChecksums, FileChecksum } from '../utils/hash';
 import { normalizePath } from '../types';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { join } from '@tauri-apps/api/path';
+
+/** 格式化字节数为可读字符串 */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+/** 格式化下载速度 */
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSec / 1024 / 1024).toFixed(2)} MB/s`;
+}
 
 const hashFileName = 'smallest_hashes.json';
 
@@ -42,6 +57,10 @@ export function GamePage() {
   const [launchOptions, setLaunchOptions] = useState<LaunchOption[]>([]);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isLaunching, setIsLaunching] = useState(false);
+  // 实时下载进度
+  const [downloadedBytes, setDownloadedBytes] = useState(0);
+  const [totalBytes, setTotalBytes] = useState<number | null>(null);
+  const [downloadSpeed, setDownloadSpeed] = useState(0);
 
   useEffect(() => {
     const checkLocalHash = async () => {
@@ -162,9 +181,27 @@ export function GamePage() {
       return;
     }
 
+    let unlisten: (() => void) | null = null;
     try {
       setIsDownloading(true);
-      setDownloadProgress(10);
+      setDownloadProgress(0);
+      setDownloadedBytes(0);
+      setTotalBytes(null);
+      setDownloadSpeed(0);
+
+      // 监听下载进度事件
+      unlisten = await listen<{ downloaded: number; total: number | null; speed: number }>(
+        'download_file_progress',
+        (event) => {
+          const { downloaded, total, speed } = event.payload;
+          setDownloadedBytes(downloaded);
+          setTotalBytes(total ?? null);
+          if (speed > 0) setDownloadSpeed(speed);
+          if (total && total > 0) {
+            setDownloadProgress(Math.round((downloaded / total) * 100));
+          }
+        }
+      );
 
       notifications.show({
         id: 'downloading',
@@ -178,9 +215,7 @@ export function GamePage() {
 
       // 下载 zip 文件路径
       const zipPath = await join(defaultGameFolderPath, '..', 'majdata_master.zip');
-      
-      setDownloadProgress(30);
-      
+
       // 从 localStorage 获取代理设置
       const httpProxy = localStorage.getItem('httpProxy') || null;
       const { zipUrl } = getDownloadUrls();
@@ -205,10 +240,11 @@ export function GamePage() {
         loading: false,
       });
 
-      // 重新检查游戏文件
+      unlisten?.();
       setHasGameExe(true);
     } catch (error) {
       console.error('下载出错:', error);
+      unlisten?.();
       notifications.update({
         id: 'downloading',
         title: '下载失败',
@@ -385,11 +421,24 @@ export function GamePage() {
               onClick={handleDownload}
               loading={isDownloading}
               disabled={!defaultGameFolderPath}
+              mb='sm'
             >
               下载游戏
             </Button>
-            {isDownloading && (
-              <Progress value={downloadProgress} mt="md" />
+        {isDownloading && (
+              <div className="space-y-1">
+                <Progress value={downloadProgress} animated />
+                <div className="flex justify-between text-gray-500 text-sm">
+                  <span>
+                    {formatBytes(downloadedBytes)}
+                    {totalBytes ? ` / ${formatBytes(totalBytes)}` : ''}
+                  </span>
+                  <span>
+                    {downloadProgress > 0 ? `${downloadProgress}%` : ''}
+                    {downloadSpeed > 0 ? `  ${formatSpeed(downloadSpeed)}` : ''}
+                  </span>
+                </div>
+              </div>
             )}
           </div>
         )}
