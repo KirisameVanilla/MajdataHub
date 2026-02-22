@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Container, Title, Text, Button, Card, Progress, Alert, List, LoadingOverlay, Select } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconDownload, IconRefresh, IconCheck, IconAlertCircle, IconPlayerPlay } from '@tabler/icons-react';
@@ -6,7 +6,6 @@ import { usePathContext, useDownloadContext } from '../contexts';
 import { calculateChecksums, FileChecksum } from '../utils/hash';
 import { normalizePath } from '../types';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { join } from '@tauri-apps/api/path';
 
 /** 格式化字节数为可读字符串 */
@@ -51,16 +50,25 @@ interface LaunchOption {
 
 export function GamePage() {
   const { defaultGameFolderPath } = usePathContext();
-  const { isDownloading, downloadProgress, setIsDownloading, setDownloadProgress, isUpdating, updateList, setIsUpdating, setUpdateList } = useDownloadContext();
+  const { isDownloading, downloadProgress, downloadedBytes, totalBytes, downloadSpeed,
+    setIsDownloading, setDownloadProgress, resetDownloadProgress,
+    isUpdating, updateList, setIsUpdating, setUpdateList } = useDownloadContext();
   const [hasGameExe, setHasGameExe] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
   const [launchOptions, setLaunchOptions] = useState<LaunchOption[]>([]);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isLaunching, setIsLaunching] = useState(false);
-  // 实时下载进度
-  const [downloadedBytes, setDownloadedBytes] = useState(0);
-  const [totalBytes, setTotalBytes] = useState<number | null>(null);
-  const [downloadSpeed, setDownloadSpeed] = useState(0);
+  const prevIsDownloading = useRef(false);
+
+  // isDownloading 从 true 变为 false 时，重新检测 exe（处理切换页面后回来的情况）
+  useEffect(() => {
+    if (prevIsDownloading.current && !isDownloading && defaultGameFolderPath) {
+      join(defaultGameFolderPath, 'MajdataPlay.exe').then((p) =>
+        invoke<boolean>('file_exists', { path: p }).then(setHasGameExe)
+      );
+    }
+    prevIsDownloading.current = isDownloading;
+  }, [isDownloading, defaultGameFolderPath]);
 
   useEffect(() => {
     const checkLocalHash = async () => {
@@ -181,27 +189,9 @@ export function GamePage() {
       return;
     }
 
-    let unlisten: (() => void) | null = null;
     try {
       setIsDownloading(true);
-      setDownloadProgress(0);
-      setDownloadedBytes(0);
-      setTotalBytes(null);
-      setDownloadSpeed(0);
-
-      // 监听下载进度事件
-      unlisten = await listen<{ downloaded: number; total: number | null; speed: number }>(
-        'download_file_progress',
-        (event) => {
-          const { downloaded, total, speed } = event.payload;
-          setDownloadedBytes(downloaded);
-          setTotalBytes(total ?? null);
-          if (speed > 0) setDownloadSpeed(speed);
-          if (total && total > 0) {
-            setDownloadProgress(Math.round((downloaded / total) * 100));
-          }
-        }
-      );
+      resetDownloadProgress();
 
       notifications.show({
         id: 'downloading',
@@ -240,11 +230,9 @@ export function GamePage() {
         loading: false,
       });
 
-      unlisten?.();
       setHasGameExe(true);
     } catch (error) {
       console.error('下载出错:', error);
-      unlisten?.();
       notifications.update({
         id: 'downloading',
         title: '下载失败',
