@@ -331,81 +331,73 @@ pub async fn fetch_chart_list(
     Ok(charts)
 }
 
-/// Tauri命令：获取 GitHub 仓库中的皮肤列表
+/// Tauri命令：从文本文件获取皮肤列表
+/// url: skins.txt 的完整 URL（按下载源不同传入不同地址）
+/// base_url: 皮肤 ZIP 文件的下载基础 URL
 #[tauri::command]
-pub async fn fetch_github_skins(proxy: Option<String>) -> Result<Vec<GithubSkin>, String> {
-    tracing::info!("获取 GitHub 皮肤列表");
+pub async fn fetch_github_skins(url: String, base_url: String, proxy: Option<String>) -> Result<Vec<GithubSkin>, String> {
+    tracing::info!("获取皮肤列表: {}", url);
     let start_time = std::time::Instant::now();
     
     let client = create_http_client(proxy)?;
     
-    let url = "https://api.github.com/repos/teamMajdata/MajdataPlay-Skins/contents/";
-    
-    let response = client.get(url)
+    let response = client.get(&url)
         .header("User-Agent", "majdata-hub")
         .send()
         .await
         .map_err(|e| {
-            tracing::error!("❌ 请求 GitHub API 失败!");
+            tracing::error!("❌ 请求皮肤列表失败!");
             tracing::error!("  错误类型: {}", e);
             tracing::error!("  是否超时: {}", e.is_timeout());
             tracing::error!("  是否连接错误: {}", e.is_connect());
-            format!("Failed to fetch GitHub skins: {}", e)
+            format!("Failed to fetch skin list: {}", e)
         })?;
     
     let status = response.status();
     
     if !status.is_success() {
         let error_body = response.text().await.unwrap_or_else(|_| "无法读取错误响应体".to_string());
-        tracing::error!("❌ GitHub API 请求失败!");
+        tracing::error!("❌ 皮肤列表请求失败!");
         tracing::error!("  状态码: {}", status);
         tracing::error!("  响应体: {}", error_body);
-        return Err(format!("Failed to fetch GitHub skins with status: {} - {}", status, error_body));
+        return Err(format!("Failed to fetch skin list with status: {} - {}", status, error_body));
     }
     
-    // 读取响应体文本
-    let response_text = response.text()
+    let text = response.text()
         .await
         .map_err(|e| {
             tracing::error!("❌ 读取响应体失败: {}", e);
             format!("Failed to read response body: {}", e)
         })?;
     
-    // GitHub API 返回的是一个数组，每个元素包含 name, download_url, size 等字段
-    #[derive(Deserialize)]
-    struct GithubFile {
-        name: String,
-        download_url: Option<String>,
-        size: u64,
-    }
+    // 确保 base_url 以 / 结尾
+    let base = if base_url.ends_with('/') {
+        base_url.clone()
+    } else {
+        format!("{}/", base_url)
+    };
     
-    let files: Vec<GithubFile> = serde_json::from_str(&response_text)
-        .map_err(|e| {
-            tracing::error!("❌ 解析 GitHub API JSON 失败!");
-            tracing::error!("  错误: {}", e);
-            tracing::error!("  响应体（前 1000 字符）: {}", 
-                if response_text.len() > 1000 { 
-                    &response_text[..1000] 
-                } else { 
-                    &response_text 
-                }
-            );
-            format!("Failed to parse GitHub API JSON: {}", e)
-        })?;
-    
-    // 只保留有 download_url 的文件
-    let skins: Vec<GithubSkin> = files.into_iter()
-        .filter_map(|f| {
-            f.download_url.map(|url| GithubSkin {
-                name: f.name,
-                download_url: url,
-                size: f.size,
-            })
+    // 按行分割，格式为 "皮肤名称|-|字节数"，文件名需 URI encode（可能含空格等特殊字符）
+    let skins: Vec<GithubSkin> = text.lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let (name, size) = if let Some((n, s)) = line.split_once("|-|") {
+                let size = s.trim().parse::<u64>().unwrap_or(0);
+                (n.trim(), size)
+            } else {
+                (line, 0u64)
+            };
+            GithubSkin {
+                name: name.to_string(),
+                download_url: format!("{}{}", base, urlencoding::encode(name)),
+                size,
+            }
         })
         .collect();
     
     let elapsed = start_time.elapsed();
-    tracing::info!("获取 GitHub 皮肤列表成功: {} 个文件, {:.2}s", skins.len(), elapsed.as_secs_f64());
+    tracing::info!("获取皮肤列表成功: {} 个皮肤, {:.2}s", skins.len(), elapsed.as_secs_f64());
     
     Ok(skins)
 }

@@ -5,6 +5,24 @@ import { IconDownload, IconSearch, IconBrandGithub } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
 import { usePathContext } from '../contexts';
 
+const SKIN_SOURCES = {
+  github: {
+    listUrl: 'https://github.com/TeamMajdata/MajdataPlay-Skins/raw/refs/heads/main/skins.txt',
+    baseUrl: 'https://github.com/TeamMajdata/MajdataPlay-Skins/raw/refs/heads/main',
+  },
+  cnb: {
+    listUrl: 'https://cnb.cool/TeamMajdata/MajdataPlay-Skins/-/git/raw/main/skins.txt',
+    baseUrl: 'https://cnb.cool/TeamMajdata/MajdataPlay-Skins/-/git/raw/main',
+  },
+} as const;
+
+type SkinSourceKey = keyof typeof SKIN_SOURCES;
+
+function getSkinUrls() {
+  const source = (localStorage.getItem('downloadSource') ?? 'cnb') as SkinSourceKey;
+  return SKIN_SOURCES[source] ?? SKIN_SOURCES.cnb;
+}
+
 interface GithubSkin {
   name: string;
   download_url: string;
@@ -48,7 +66,10 @@ export function OnlineSkins({ onRefresh }: OnlineSkinsProps) {
   const loadSkins = async () => {
     setLoading(true);
     try {
+      const { listUrl, baseUrl } = getSkinUrls();
       const skinList = await invoke<GithubSkin[]>('fetch_github_skins', {
+        url: listUrl,
+        baseUrl,
         proxy: getProxy(),
       });
       
@@ -139,7 +160,7 @@ export function OnlineSkins({ onRefresh }: OnlineSkinsProps) {
           ) : (
             <>
               <Text size="sm" c="dimmed">
-                <IconBrandGithub size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> 来自 GitHub: teamMajdata/MajdataPlay-Skins
+                <IconBrandGithub size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> 来自: teamMajdata/MajdataPlay-Skins ({(localStorage.getItem('downloadSource') ?? 'cnb').toUpperCase()})
               </Text>
 
               <Grid gutter="sm">

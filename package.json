@@ -1,11 +1,12 @@
 {
   "name": "majdata-hub",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
     "bump:minor": "node scripts/bump-minor.mjs",
+    "bump:fix": "node scripts/bump-fix.mjs",
     "build": "tauri build",
     "tauri": "tauri",
     "vite:dev": "vite",
