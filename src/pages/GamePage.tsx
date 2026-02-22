@@ -8,9 +8,25 @@ import { normalizePath } from '../types';
 import { invoke } from '@tauri-apps/api/core';
 import { join } from '@tauri-apps/api/path';
 
-const REMOTE_ZIP_URL = 'https://github.com/TeamMajdata/MajdataPlay_Build/archive/refs/heads/master.zip';
-const REMOTE_HASH_URL = 'https://github.com/TeamMajdata/MajdataPlay_Build/raw/refs/heads/master/smallest_hashes.json';
-const GITHUB_RAW_BASE = 'https://github.com/TeamMajdata/MajdataPlay_Build/raw/refs/heads/master/';
+const hashFileName = 'smallest_hashes.json';
+
+const DOWNLOAD_SOURCES = {
+  github: {
+    zipUrl:  'https://github.com/TeamMajdata/MajdataPlay_Build/archive/refs/tags/LATEST.zip',
+    rawBase: 'https://github.com/TeamMajdata/MajdataPlay_Build/raw/refs/heads/main/',
+  },
+  cnb: {
+    zipUrl:  'https://cnb.cool/TeamMajdata/MajdataPlay_Build/-/git/archive/LATEST.zip',
+    rawBase: 'https://cnb.cool/TeamMajdata/MajdataPlay_Build/-/git/raw/main/',
+  },
+} as const;
+
+type DownloadSourceKey = keyof typeof DOWNLOAD_SOURCES;
+
+function getDownloadUrls() {
+  const source = (localStorage.getItem('downloadSource') ?? 'cnb') as DownloadSourceKey;
+  return DOWNLOAD_SOURCES[source] ?? DOWNLOAD_SOURCES.github;
+}
 
 interface LaunchOption {
   id: string;
@@ -81,9 +97,10 @@ export function GamePage() {
       const localHashes = await calculateChecksums(defaultGameFolderPath);
       
       const httpProxy = localStorage.getItem('httpProxy') || null;
+      const { rawBase } = getDownloadUrls();
       
       const remoteHashes: FileChecksum[] = await invoke('fetch_remote_hashes', {
-        url: REMOTE_HASH_URL,
+        url: rawBase + hashFileName,
         proxy: httpProxy,
       });
 
@@ -166,10 +183,11 @@ export function GamePage() {
       
       // 从 localStorage 获取代理设置
       const httpProxy = localStorage.getItem('httpProxy') || null;
+      const { zipUrl } = getDownloadUrls();
       
       // 使用 Rust 命令下载并解压
       await invoke('download_and_extract', {
-        url: REMOTE_ZIP_URL,
+        url: zipUrl,
         targetPath: defaultGameFolderPath,
         zipPath: zipPath,
         proxy: httpProxy,
@@ -224,10 +242,11 @@ export function GamePage() {
 
       // 从 localStorage 获取代理设置
       const httpProxy = localStorage.getItem('httpProxy') || null;
+      const { rawBase } = getDownloadUrls();
 
       // 批量下载文件（使用 Promise.all 实现并发下载）
       const downloadTasks = updateList.map(async (file) => {
-        const fileUrl = GITHUB_RAW_BASE + file.filePath;
+        const fileUrl = rawBase + file.filePath;
         try {
           await invoke('download_file_to_path', {
             url: fileUrl,

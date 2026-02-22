@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Text, Card, TextInput, Button, Group, Stack, ActionIcon } from '@mantine/core';
-import { IconFolder, IconDeviceFloppy, IconFolderOpen, IconNetwork } from '@tabler/icons-react';
+import { Container, Title, Text, Card, TextInput, Button, Group, Stack, ActionIcon, Select } from '@mantine/core';
+import { IconFolder, IconDeviceFloppy, IconFolderOpen, IconNetwork, IconCloudDownload } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { open } from '@tauri-apps/plugin-dialog';
 import { usePathContext } from '../contexts';
@@ -16,6 +16,7 @@ export function SettingPage() {
   }
   const [gamePath, setGamePath] = useState<string>(defaultGameFolderPath);
   const [httpProxy, setHttpProxy] = useState<string>('');
+  const [downloadSource, setDownloadSource] = useState<string>('cnb');
 
   useEffect(() => {
     const savedPath = localStorage.getItem('gamePath');
@@ -25,6 +26,10 @@ export function SettingPage() {
     const savedProxy = localStorage.getItem('httpProxy');
     if (savedProxy) {
       setHttpProxy(savedProxy);
+    }
+    const savedSource = localStorage.getItem('downloadSource');
+    if (savedSource) {
+      setDownloadSource(savedSource);
     }
   }, []);
 
@@ -51,6 +56,7 @@ export function SettingPage() {
   const handleSave = () => {
     localStorage.setItem('gamePath', gamePath);
     localStorage.setItem('httpProxy', httpProxy);
+    localStorage.setItem('downloadSource', downloadSource);
     notifications.show({
       title: '保存成功',
       message: '设置已保存',
@@ -99,6 +105,20 @@ export function SettingPage() {
             size="md"
             label="HTTP 代理"
             description="留空表示不使用代理，支持 http:// 和 https:// 格式"
+          />
+
+          <Select
+            leftSection={<IconCloudDownload size={18} />}
+            label="下载源"
+            description="选择游戏文件的下载来源，国内用户推荐使用 CNB"
+            data={[
+              { value: 'github', label: 'GitHub（国际）' },
+              { value: 'cnb', label: 'CNB（国内）' },
+            ]}
+            value={downloadSource}
+            onChange={(value) => setDownloadSource(value ?? 'cnb')}
+            size="md"
+            allowDeselect={false}
           />
 
           <Group justify="flex-end">
