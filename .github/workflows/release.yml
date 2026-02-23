@@ -157,6 +157,8 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           cd temp
           git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
           git commit -m "$version"
           AUTH_URL=$(echo "$MIRROR_URL" | sed -E "s#^https://#https://x-access-token:${MIRROR_TOKEN}@#")
