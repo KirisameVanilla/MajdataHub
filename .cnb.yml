@@ -1,0 +1,168 @@
+main:
+  push:
+    - ifModify:
+        - src-tauri/tauri.conf.json
+      runner:
+        tags: cnb:arch:amd64
+        cpus: 8
+      docker:
+        image: ubuntu:22.04
+        volumes:
+          # 缓存 Cargo 依赖，加速 Rust 编译
+          - /root/.cargo/registry:copy-on-write
+          - /root/.cargo/git:copy-on-write
+          # 缓存 pnpm 依赖
+          - /root/.local/share/pnpm/store:copy-on-write
+      stages:
+        - name: 安装系统依赖
+          script: |
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y --no-install-recommends \
+              curl wget git jq ca-certificates \
+              build-essential pkg-config libssl-dev \
+              libwebkit2gtk-4.1-dev \
+              libgtk-3-dev \
+              libayatana-appindicator3-dev \
+              librsvg2-dev \
+              patchelf \
+              libxdo-dev \
+              libsoup-3.0-dev \
+              libjavascriptcoregtk-4.1-dev \
+              file
+
+        - name: 安装 Rust 工具链
+          script: |
+            if ! command -v rustup &>/dev/null; then
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+            fi
+            . "$HOME/.cargo/env"
+            rustup show
+
+        - name: 安装 Node.js 与 pnpm
+          script: |
+            if ! command -v node &>/dev/null; then
+              curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+              apt-get install -y nodejs
+            fi
+            if ! command -v pnpm &>/dev/null; then
+              npm install -g pnpm
+            fi
+            node -v
+            pnpm -v
+
+        - name: 提取版本号
+          script: |
+            VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+            echo "版本号: $VERSION"
+            echo "##[set-output VERSION=$VERSION]"
+          exports:
+            VERSION: APP_VERSION
+
+        - name: 安装前端依赖
+          script: |
+            pnpm install
+
+        - name: 构建应用
+          script: |
+            . "$HOME/.cargo/env"
+            pnpm build
+          timeout: 2h
+
+        - name: 创建并推送 Tag
+          script: |
+            git config user.name "cnb-actions[bot]"
+            git config user.email "cnb-actions[bot]@cnb.cool"
+            TAG="v$APP_VERSION"
+            if git rev-parse "$TAG" &>/dev/null; then
+              echo "Tag $TAG 已存在，跳过创建"
+            else
+              git tag -a "$TAG" -m "Release $TAG"
+              git push origin "$TAG"
+              echo "已创建并推送 Tag: $TAG"
+            fi
+
+        - name: 创建 CNB Release
+          script: |
+            TAG="v$APP_VERSION"
+            echo "正在创建 Release: Majdata Hub $TAG"
+            RESPONSE=$(curl --silent --request POST \
+              --url "${CNB_API_ENDPOINT}/${CNB_REPO_SLUG}/-/releases" \
+              --header 'Accept: application/vnd.cnb.api+json' \
+              --header "Authorization: ${CNB_TOKEN}" \
+              --header 'Content-Type: application/json' \
+              --data "{
+                \"body\": \"\",
+                \"draft\": false,
+                \"make_latest\": \"true\",
+                \"name\": \"Majdata Hub ${TAG}\",
+                \"prerelease\": false,
+                \"tag_name\": \"${TAG}\",
+                \"target_commitish\": \"main\"
+              }")
+            echo "Response: $RESPONSE"
+            RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
+            if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+              echo "Release 创建失败"
+              exit 1
+            fi
+            echo "Release ID: $RELEASE_ID"
+            echo "##[set-output RELEASE_ID=$RELEASE_ID]"
+          exports:
+            RELEASE_ID: CNB_RELEASE_ID
+
+        - name: 上传构建产物到 Release
+          script: |
+            APPIMAGE_DIR="src-tauri/target/release/bundle/appimage"
+            DEB_DIR="src-tauri/target/release/bundle/deb"
+            RPM_DIR="src-tauri/target/release/bundle/rpm"
+
+            upload_file() {
+              local FILE="$1"
+              [ -z "$FILE" ] || [ ! -f "$FILE" ] && return
+              local ASSET_NAME
+              ASSET_NAME=$(basename "$FILE")
+              local SIZE
+              SIZE=$(wc -c < "$FILE")
+              echo "正在获取 $ASSET_NAME 的上传地址..."
+              local UPLOAD_URL
+              UPLOAD_URL=$(curl --silent --request POST \
+                --url "${CNB_API_ENDPOINT}/${CNB_REPO_SLUG}/-/releases/${CNB_RELEASE_ID}/asset-upload-url" \
+                --header 'Accept: application/vnd.cnb.api+json' \
+                --header "Authorization: ${CNB_TOKEN}" \
+                --header 'Content-Type: application/json' \
+                --data "{\"asset_name\": \"$ASSET_NAME\", \"overwrite\": true, \"size\": $SIZE, \"ttl\": 0}" | jq -r '.url')
+              if [ -z "$UPLOAD_URL" ] || [ "$UPLOAD_URL" = "null" ]; then
+                echo "获取上传地址失败，跳过 $ASSET_NAME"
+                return 1
+              fi
+              echo "正在上传 $ASSET_NAME..."
+              curl --silent --request PUT --url "$UPLOAD_URL" --upload-file "$FILE"
+              echo "已上传: $ASSET_NAME"
+            }
+
+            if [ -d "$APPIMAGE_DIR" ]; then
+              for file in "$APPIMAGE_DIR"/*; do
+                [ -f "$file" ] && upload_file "$file"
+              done
+            else
+              echo "AppImage 目录不存在，跳过"
+            fi
+
+            if [ -d "$DEB_DIR" ]; then
+              for file in "$DEB_DIR"/*; do
+                [ -f "$file" ] && upload_file "$file"
+              done
+            else
+              echo "Deb 目录不存在，跳过"
+            fi
+
+            if [ -d "$RPM_DIR" ]; then
+              for file in "$RPM_DIR"/*; do
+                [ -f "$file" ] && upload_file "$file"
+              done
+            else
+              echo "RPM 目录不存在，跳过"
+            fi
+
+            echo "所有构建产物上传完毕"
