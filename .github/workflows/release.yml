@@ -128,3 +128,38 @@ jobs:
               gh release upload v${{ steps.version.outputs.version }} "$file" --clobber
             }
           }
+
+      - name: Move uploaded files to temp folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "temp" | Out-Null
+          $msiPath = "src-tauri/target/release/bundle/msi"
+          $nsisPath = "src-tauri/target/release/bundle/nsis"
+          if (Test-Path $msiPath) {
+            Get-ChildItem -Path $msiPath -File | ForEach-Object {
+              Move-Item -Path $_.FullName -Destination "temp/" -Force
+              echo "Moved $($_.Name) to temp/"
+            }
+          }
+          if (Test-Path $nsisPath) {
+            Get-ChildItem -Path $nsisPath -File | ForEach-Object {
+              Move-Item -Path $_.FullName -Destination "temp/" -Force
+              echo "Moved $($_.Name) to temp/"
+            }
+          }
+
+      - name: Commit files in temp folder
+        shell: bash
+        env:
+          MIRROR_URL: ${{ vars.CNB_URL }}
+          MIRROR_TOKEN: ${{ vars.CNB_TOKEN }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          cd temp
+          git init
+          git add .
+          git commit -m "$version"
+          AUTH_URL=$(echo "$MIRROR_URL" | sed -E "s#^https://#https://x-access-token:${MIRROR_TOKEN}@#")
+          git remote remove mirror 2>/dev/null || true
+          git remote add mirror "$AUTH_URL"
+          git push mirror --all --force
