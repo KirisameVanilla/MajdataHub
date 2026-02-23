@@ -8,6 +8,7 @@ const root = resolve(__dirname, '..');
 const tauriConfPath = resolve(root, 'src-tauri', 'tauri.conf.json');
 const packageJsonPath = resolve(root, 'package.json');
 const readmePath = resolve(root, 'README.md');
+const cargoTomlPath = resolve(root, 'src-tauri', 'Cargo.toml');
 
 function bumpMinor(version) {
   const parts = version.split('.').map(Number);
@@ -31,6 +32,14 @@ writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n', 'utf-8')
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 packageJson.version = newVersion;
 writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n', 'utf-8');
+
+// 更新 Cargo.toml
+const cargoToml = readFileSync(cargoTomlPath, 'utf-8');
+const updatedCargoToml = cargoToml.replace(
+  /^(version\s*=\s*")([^"]+)(")/m,
+  `$1${newVersion}$3`
+);
+writeFileSync(cargoTomlPath, updatedCargoToml, 'utf-8');
 
 // 更新 README.md 版本徽章
 const readme = readFileSync(readmePath, 'utf-8');
