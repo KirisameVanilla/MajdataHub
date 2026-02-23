@@ -13,7 +13,10 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
-    
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,11 +44,15 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       # 编译缓存
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "src-tauri -> target"
+          cache-on-failure: "true"
 
       - name: Install dependencies
         run: pnpm install
