@@ -11,6 +11,8 @@ main:
           # 缓存 Cargo 依赖，加速 Rust 编译
           - /root/.cargo/registry:copy-on-write
           - /root/.cargo/git:copy-on-write
+          # 缓存 xwin Windows SDK 下载缓存
+          - /root/.xwin-cache:copy-on-write
           # 缓存 pnpm 依赖
           - /root/.local/share/pnpm/store:copy-on-write
       stages:
@@ -20,23 +22,20 @@ main:
             apt-get update -qq
             apt-get install -y --no-install-recommends \
               curl wget git jq ca-certificates \
-              build-essential pkg-config libssl-dev \
-              libwebkit2gtk-4.1-dev \
-              libgtk-3-dev \
-              libayatana-appindicator3-dev \
-              librsvg2-dev \
-              patchelf \
-              libxdo-dev \
-              libsoup-3.0-dev \
-              libjavascriptcoregtk-4.1-dev \
-              file
+              build-essential pkg-config \
+              clang llvm lld \
+              libssl-dev \
+              nsis
 
-        - name: 安装 Rust 工具链
+        - name: 安装 Rust 工具链与 Windows 交叉编译目标
           script: |
             if ! command -v rustup &>/dev/null; then
               curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
             fi
             . "$HOME/.cargo/env"
+            rustup target add x86_64-pc-windows-msvc
+            # 安装 cargo-xwin 用于 Windows 交叉编译
+            cargo install cargo-xwin --locked
             rustup show
 
         - name: 安装 Node.js 与 pnpm
@@ -63,10 +62,11 @@ main:
           script: |
             pnpm install
 
-        - name: 构建应用
+        - name: 交叉编译 Windows 应用 (exe + msi + nsis)
           script: |
             . "$HOME/.cargo/env"
-            pnpm build
+            # 使用 cargo-xwin 交叉编译到 Windows x86_64
+            pnpm tauri build --target x86_64-pc-windows-msvc --runner cargo-xwin
           timeout: 2h
 
         - name: 创建并推送 Tag
@@ -87,7 +87,7 @@ main:
             TAG="v$APP_VERSION"
             echo "正在创建 Release: Majdata Hub $TAG"
             RESPONSE=$(curl --silent --request POST \
-              --url "${CNB_API_ENDPOINT}/${CNB_REPO_SLUG}/-/releases" \
+              --url "https://api.cnb.cool/${CNB_REPO_SLUG}/-/releases" \
               --header 'Accept: application/vnd.cnb.api+json' \
               --header "Authorization: ${CNB_TOKEN}" \
               --header 'Content-Type: application/json' \
@@ -113,9 +113,9 @@ main:
 
         - name: 上传构建产物到 Release
           script: |
-            APPIMAGE_DIR="src-tauri/target/release/bundle/appimage"
-            DEB_DIR="src-tauri/target/release/bundle/deb"
-            RPM_DIR="src-tauri/target/release/bundle/rpm"
+            # Windows 交叉编译产物路径
+            MSI_DIR="src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi"
+            NSIS_DIR="src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
 
             upload_file() {
               local FILE="$1"
@@ -124,45 +124,34 @@ main:
               ASSET_NAME=$(basename "$FILE")
               local SIZE
               SIZE=$(wc -c < "$FILE")
-              echo "正在获取 $ASSET_NAME 的上传地址..."
-              local UPLOAD_URL
-              UPLOAD_URL=$(curl --silent --request POST \
-                --url "${CNB_API_ENDPOINT}/${CNB_REPO_SLUG}/-/releases/${CNB_RELEASE_ID}/asset-upload-url" \
+              echo "正在上传 $ASSET_NAME..."
+              PAYLOAD=$(jq -n \
+                --arg name "$ASSET_NAME" \
+                --argjson size "$SIZE" \
+                '{"asset_name":$name,"overwrite":true,"size":$size,"ttl":0}')
+              curl --request POST \
+                --url "https://api.cnb.cool/${CNB_REPO_SLUG}/-/releases/${CNB_RELEASE_ID}/asset-upload-url" \
                 --header 'Accept: application/vnd.cnb.api+json' \
                 --header "Authorization: ${CNB_TOKEN}" \
                 --header 'Content-Type: application/json' \
-                --data "{\"asset_name\": \"$ASSET_NAME\", \"overwrite\": true, \"size\": $SIZE, \"ttl\": 0}" | jq -r '.url')
-              if [ -z "$UPLOAD_URL" ] || [ "$UPLOAD_URL" = "null" ]; then
-                echo "获取上传地址失败，跳过 $ASSET_NAME"
-                return 1
-              fi
-              echo "正在上传 $ASSET_NAME..."
-              curl --silent --request PUT --url "$UPLOAD_URL" --upload-file "$FILE"
+                --data "$PAYLOAD"
               echo "已上传: $ASSET_NAME"
             }
 
-            if [ -d "$APPIMAGE_DIR" ]; then
-              for file in "$APPIMAGE_DIR"/*; do
+            if [ -d "$MSI_DIR" ]; then
+              for file in "$MSI_DIR"/*; do
                 [ -f "$file" ] && upload_file "$file"
               done
             else
-              echo "AppImage 目录不存在，跳过"
+              echo "MSI 目录不存在，跳过"
             fi
 
-            if [ -d "$DEB_DIR" ]; then
-              for file in "$DEB_DIR"/*; do
+            if [ -d "$NSIS_DIR" ]; then
+              for file in "$NSIS_DIR"/*; do
                 [ -f "$file" ] && upload_file "$file"
               done
             else
-              echo "Deb 目录不存在，跳过"
-            fi
-
-            if [ -d "$RPM_DIR" ]; then
-              for file in "$RPM_DIR"/*; do
-                [ -f "$file" ] && upload_file "$file"
-              done
-            else
-              echo "RPM 目录不存在，跳过"
+              echo "NSIS 目录不存在，跳过"
             fi
 
             echo "所有构建产物上传完毕"

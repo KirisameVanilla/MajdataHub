@@ -7,6 +7,7 @@ const root = resolve(__dirname, '..');
 
 const tauriConfPath = resolve(root, 'src-tauri', 'tauri.conf.json');
 const packageJsonPath = resolve(root, 'package.json');
+const readmePath = resolve(root, 'README.md');
 
 function bumpMinor(version) {
   const parts = version.split('.').map(Number);
@@ -29,5 +30,13 @@ writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n', 'utf-8')
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 packageJson.version = newVersion;
 writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n', 'utf-8');
+
+// 更新 README.md 版本徽章
+const readme = readFileSync(readmePath, 'utf-8');
+const updatedReadme = readme.replace(
+  /https:\/\/img\.shields\.io\/badge\/version-[^-]+-blue\.svg/,
+  `https://img.shields.io/badge/version-${newVersion}-blue.svg`
+);
+writeFileSync(readmePath, updatedReadme, 'utf-8');
 
 console.log(`版本已从 ${oldVersion} 升级到 ${newVersion}`);
