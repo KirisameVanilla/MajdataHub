@@ -54,6 +54,8 @@ jobs:
         run: pnpm build
 
       - name: Create and push tag
+        id: create_tag
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
@@ -66,6 +68,7 @@ jobs:
 
       - name: Create Release
         id: create_release
+        if: steps.create_tag.outcome == 'success'
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -77,6 +80,7 @@ jobs:
 
       - name: Get MSI files
         id: msi_files
+        if: steps.create_tag.outcome == 'success'
         shell: pwsh
         run: |
           $msiPath = "src-tauri/target/release/bundle/msi"
@@ -92,6 +96,7 @@ jobs:
 
       - name: Get NSIS files
         id: nsis_files
+        if: steps.create_tag.outcome == 'success'
         shell: pwsh
         run: |
           $nsisPath = "src-tauri/target/release/bundle/nsis"
@@ -106,7 +111,7 @@ jobs:
           }
 
       - name: Upload MSI files to Release
-        if: steps.msi_files.outputs.files != ''
+        if: steps.create_tag.outcome == 'success' && steps.msi_files.outputs.files != ''
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -121,7 +126,7 @@ jobs:
           }
 
       - name: Upload NSIS files to Release
-        if: steps.nsis_files.outputs.files != ''
+        if: steps.create_tag.outcome == 'success' && steps.nsis_files.outputs.files != ''
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -136,6 +141,7 @@ jobs:
           }
 
       - name: Move uploaded files to temp folder
+        if: steps.create_tag.outcome == 'success'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "temp" | Out-Null
@@ -155,6 +161,7 @@ jobs:
           }
 
       - name: Commit files in temp folder
+        if: steps.create_tag.outcome == 'success'
         shell: bash
         env:
           MIRROR_URL: ${{ vars.CNB_URL }}
