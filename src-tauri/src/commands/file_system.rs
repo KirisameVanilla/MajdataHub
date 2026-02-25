@@ -475,3 +475,53 @@ pub fn delete_skin(skins_dir: String, skin_name: String) -> Result<(), String> {
         }
     }
 }
+
+/// Tauri命令：读取文件内容
+#[tauri::command]
+pub fn read_file_content(path: String) -> Result<String, String> {
+    let file_path = Path::new(&path);
+    
+    if !file_path.exists() {
+        return Err(format!("文件不存在: {}", path));
+    }
+    
+    if !file_path.is_file() {
+        return Err(format!("路径不是文件: {}", path));
+    }
+    
+    match fs::read_to_string(file_path) {
+        Ok(content) => {
+            tracing::info!("成功读取文件: {:?}", file_path);
+            Ok(content)
+        },
+        Err(e) => {
+            tracing::error!("读取文件失败: {}", e);
+            Err(format!("读取文件失败: {}", e))
+        }
+    }
+}
+
+/// Tauri命令：写入文件内容
+#[tauri::command]
+pub fn write_file_content(path: String, content: String) -> Result<(), String> {
+    let file_path = Path::new(&path);
+    
+    // 确保父目录存在
+    if let Some(parent) = file_path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("创建父目录失败: {}", e))?;
+        }
+    }
+    
+    match fs::write(file_path, content) {
+        Ok(_) => {
+            tracing::info!("成功写入文件: {:?}", file_path);
+            Ok(())
+        },
+        Err(e) => {
+            tracing::error!("写入文件失败: {}", e);
+            Err(format!("写入文件失败: {}", e))
+        }
+    }
+}

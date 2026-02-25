@@ -14,6 +14,8 @@ export interface HashObject {
   checksum: string;
 }
 
+export * from './settings';
+
 // 标准化路径分隔符，将所有反斜杠转换为正斜杠
 export function normalizePath(path: string): string {
   return path.replace(/\\/g, '/');

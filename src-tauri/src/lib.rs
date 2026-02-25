@@ -115,6 +115,9 @@ pub fn run() {
             // 皮肤管理相关命令
             list_skins,
             delete_skin,
+            // 文件读写命令
+            read_file_content,
+            write_file_content,
             // 校验和相关命令
             calculate_checksums,
             save_checksums_to_file,

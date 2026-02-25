@@ -7,6 +7,7 @@ import { calculateChecksums, FileChecksum } from '../utils/hash';
 import { normalizePath } from '../types';
 import { invoke } from '@tauri-apps/api/core';
 import { join } from '@tauri-apps/api/path';
+import { GameSettingsCard } from '../components';
 
 /** 格式化字节数为可读字符串 */
 function formatBytes(bytes: number): string {
@@ -98,7 +99,6 @@ export function GamePage() {
     checkLocalHash();
   }, [defaultGameFolderPath]);
 
-  // 加载启动选项列表
   useEffect(() => {
     const loadLaunchOptions = async () => {
       try {
@@ -521,6 +521,14 @@ export function GamePage() {
             启动游戏
           </Button>
         </Card>
+      )}
+
+      {/* 游戏设置 */}
+      {defaultGameFolderPath && (
+        <GameSettingsCard 
+          gameFolderPath={defaultGameFolderPath}
+          hasGameExe={hasGameExe}
+        />
       )}
     </Container>
   );

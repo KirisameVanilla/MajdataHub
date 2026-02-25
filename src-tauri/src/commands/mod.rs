@@ -22,7 +22,10 @@ pub use file_system::{
     create_chart_category,
     create_directory,
     list_skins,
-    delete_skin
+    delete_skin,
+    read_file_content,
+    write_file_content
 };
 pub use network::{download_file_to_path, fetch_remote_hashes, fetch_chart_list, fetch_github_skins, download_skin_zip, download_charts_batch, clear_api_cache};
 pub use zip::{extract_zip, download_and_extract};
+

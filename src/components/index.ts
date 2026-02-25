@@ -4,3 +4,4 @@ export { LocalCharts } from './LocalCharts';
 export { OnlineCharts } from './OnlineCharts';
 export { LocalSkins } from './LocalSkins';
 export { OnlineSkins } from './OnlineSkins';
+export { GameSettingsCard } from './GameSettingsCard';
