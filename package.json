@@ -1,7 +1,7 @@
 {
   "name": "majdata-hub",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
@@ -20,6 +20,7 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "~2.3.1",
     "@tauri-apps/plugin-updater": "~2.10.0",
     "framer-motion": "^12.34.0",
     "react": "^19.1.0",

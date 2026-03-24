@@ -92,6 +92,7 @@ pub fn run() {
     tracing::info!("启动 Majdata Hub 应用程序");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

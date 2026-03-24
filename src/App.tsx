@@ -3,8 +3,12 @@ import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { Layout } from './components';
 import { HomePage, ChartPage, SkinPage, SettingPage, GamePage } from './pages';
+import { useAutoUpdate } from './hooks/useAutoUpdate';
 
 function App() {
+  // 启动时自动检查更新
+  useAutoUpdate();
+
   return (
     <MantineProvider>
       <Notifications position="top-right" />
