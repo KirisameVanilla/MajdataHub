@@ -65,6 +65,7 @@ jobs:
           foreach ($path in $artifactPaths) {
             if (Test-Path $path) {
               $fileName = Split-Path $path -Leaf
+              $fileName = $fileName -replace ' ', '.'
               Copy-Item -Path $path -Destination "temp/$fileName" -Force
               Write-Host "Copied: $fileName"
             } else {
@@ -80,12 +81,10 @@ jobs:
         env:
           MIRROR_URL: ${{ vars.CNB_URL }}
         run: |
-          # 获取当前UTC时间
           $pubDate = (Get-Date).ToUniversalTime().ToString("o")
 
           $platforms = @{}
 
-          # 遍历temp目录中的所有文件
           $files = Get-ChildItem "temp" -File | Where-Object { $_.Extension -ne ".sig" }
 
           foreach ($file in $files) {
@@ -96,7 +95,6 @@ jobs:
               $signature = Get-Content $sigPath -Raw
             }
             
-            # 根据文件名确定平台key
             $platformKey = ""
             if ($file.Name -like "*x64_en-US*msi") {
               $platformKey = "windows-x86_64-msi"
@@ -108,7 +106,7 @@ jobs:
               continue
             }
             
-            $cnbUrl = "$($env:MIRROR_URL)/TeamMajdata/MajdataHub-Build/-/git/raw/master/$($file.Name)?download=true"
+            $cnbUrl = "$($env:MIRROR_URL)/-/git/raw/main/$($file.Name)?download=true"
             
             $platforms[$platformKey] = @{
               signature = $signature
@@ -116,7 +114,6 @@ jobs:
             }
           }
 
-          # 构造JSON对象
           $latestJson = @{
             version = '${{ steps.tauri-build.outputs.appVersion }}'
             notes = ""
