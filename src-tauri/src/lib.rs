@@ -1,12 +1,12 @@
 // 模块声明
-mod models;
 mod commands;
+mod models;
 
 // 导入所有命令
 use commands::*;
-use tracing_subscriber::{fmt, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use std::fs::OpenOptions;
 use std::io::Write;
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 /// 简单的线程安全文件写入器包装
 #[derive(Clone)]
@@ -40,9 +40,9 @@ fn init_logging() {
         .as_ref()
         .and_then(|p| p.parent())
         .unwrap_or_else(|| std::path::Path::new("."));
-    
+
     let log_file_path = log_dir.join("MajdataHub.log");
-    
+
     // 创建或覆盖日志文件
     let log_file = OpenOptions::new()
         .create(true)
@@ -50,37 +50,36 @@ fn init_logging() {
         .truncate(true)
         .open(&log_file_path)
         .expect("无法创建日志文件");
-    
+
     let file_writer = FileWriter::new(log_file);
-    
+
     // 创建日志过滤器，默认 info 级别，可通过 RUST_LOG 环境变量覆盖
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
-    
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
     tracing_subscriber::registry()
         .with(filter)
         .with(
             // 输出到文件
             fmt::layer()
                 .with_writer(move || file_writer.clone())
-                .with_target(true)  // 显示日志来源
-                .with_thread_ids(false)  // 不显示线程ID
-                .with_file(true)  // 显示文件名
-                .with_line_number(true)  // 显示行号
-                .with_ansi(false)  // 禁用颜色代码（文件不需要颜色）
+                .with_target(true) // 显示日志来源
+                .with_thread_ids(false) // 不显示线程ID
+                .with_file(true) // 显示文件名
+                .with_line_number(true) // 显示行号
+                .with_ansi(false), // 禁用颜色代码（文件不需要颜色）
         )
         .with(
             // 输出到终端
             fmt::layer()
                 .with_writer(std::io::stdout)
-                .with_target(true)  // 显示日志来源
-                .with_thread_ids(false)  // 不显示线程ID
-                .with_file(true)  // 显示文件名
-                .with_line_number(true)  // 显示行号
-                .with_ansi(true)  // 终端启用颜色代码
+                .with_target(true) // 显示日志来源
+                .with_thread_ids(false) // 不显示线程ID
+                .with_file(true) // 显示文件名
+                .with_line_number(true) // 显示行号
+                .with_ansi(true), // 终端启用颜色代码
         )
         .init();
-    
+
     tracing::info!("日志系统已初始化，日志文件: {:?}", log_file_path);
 }
 
@@ -89,16 +88,17 @@ fn init_logging() {
 pub fn run() {
     // 初始化日志系统
     init_logging();
-    
+
     tracing::info!("启动 Majdata Hub 应用程序");
-    
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             // 文件系统相关命令
-            greet, 
-            get_app_exe_path, 
+            greet,
+            get_app_exe_path,
             get_app_exe_folder_path,
             file_exists,
             list_bat_files,
@@ -136,4 +136,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

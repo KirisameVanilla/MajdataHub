@@ -1,6 +1,6 @@
 [package]
 name = "majdata-hub"
-version = "0.3.0"
+version = "0.3.1"
 description = "A Tauri App"
 authors = ["KirisameVanilla"]
 edition = "2021"
@@ -35,4 +35,7 @@ tracing-appender = "0.2"
 chrono = "0.4"
 rayon = "1.10"
 walkdir = "2"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
 

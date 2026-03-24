@@ -1,8 +1,8 @@
-use std::env;
-use std::path::Path;
-use std::fs;
-use std::process::Command;
 use serde::{Deserialize, Serialize};
+use std::env;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
 
 /// 游戏启动选项
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,15 +111,19 @@ pub fn get_launch_options() -> Vec<LaunchOption> {
 /// Tauri命令：根据启动选项ID启动游戏
 #[tauri::command]
 pub fn launch_game(game_dir: String, option_id: String) -> Result<(), String> {
-    tracing::info!("准备启动游戏，游戏目录: {}，启动选项: {}", game_dir, option_id);
-    
+    tracing::info!(
+        "准备启动游戏，游戏目录: {}，启动选项: {}",
+        game_dir,
+        option_id
+    );
+
     let game_exe = Path::new(&game_dir).join("MajdataPlay.exe");
-    
+
     if !game_exe.exists() {
         tracing::error!("游戏程序不存在: {:?}", game_exe);
         return Err(format!("游戏程序不存在: {}", game_exe.display()));
     }
-    
+
     #[cfg(target_os = "windows")]
     {
         let args: Vec<&str> = match option_id.as_str() {
@@ -135,9 +139,9 @@ pub fn launch_game(game_dir: String, option_id: String) -> Result<(), String> {
                 return Err(format!("未知的启动选项: {}", option_id));
             }
         };
-        
+
         tracing::info!("使用参数启动游戏: {:?}", args);
-        
+
         // 启动游戏
         match Command::new(&game_exe)
             .args(&args)
@@ -152,14 +156,14 @@ pub fn launch_game(game_dir: String, option_id: String) -> Result<(), String> {
                     // 或者可以提示用户等待游戏打开后再启动编辑器
                 }
                 Ok(())
-            },
+            }
             Err(e) => {
                 tracing::error!("启动游戏失败: {}", e);
                 Err(format!("启动游戏失败: {}", e))
             }
         }
     }
-    
+
     #[cfg(not(target_os = "windows"))]
     {
         Err("此功能仅在 Windows 上可用".to_string())
@@ -170,17 +174,17 @@ pub fn launch_game(game_dir: String, option_id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn list_bat_files(dir_path: String) -> Result<Vec<String>, String> {
     let path = Path::new(&dir_path);
-    
+
     if !path.exists() {
         return Err(format!("目录不存在: {}", dir_path));
     }
-    
+
     if !path.is_dir() {
         return Err(format!("路径不是目录: {}", dir_path));
     }
-    
+
     let mut bat_files = Vec::new();
-    
+
     match fs::read_dir(path) {
         Ok(entries) => {
             for entry in entries {
@@ -195,7 +199,7 @@ pub fn list_bat_files(dir_path: String) -> Result<Vec<String>, String> {
         }
         Err(e) => return Err(format!("读取目录失败: {}", e)),
     }
-    
+
     bat_files.sort();
     Ok(bat_files)
 }
@@ -204,14 +208,14 @@ pub fn list_bat_files(dir_path: String) -> Result<Vec<String>, String> {
 #[tauri::command]
 pub fn execute_bat_file(dir_path: String, bat_file: String) -> Result<(), String> {
     tracing::info!("执行 BAT 文件: {}/{}", dir_path, bat_file);
-    
+
     let bat_path = Path::new(&dir_path).join(&bat_file);
-    
+
     if !bat_path.exists() {
         tracing::error!("BAT 文件不存在: {:?}", bat_path);
         return Err(format!("BAT 文件不存在: {}", bat_path.display()));
     }
-    
+
     #[cfg(target_os = "windows")]
     {
         match Command::new("cmd")
@@ -222,14 +226,14 @@ pub fn execute_bat_file(dir_path: String, bat_file: String) -> Result<(), String
             Ok(_) => {
                 tracing::info!("BAT 文件执行成功");
                 Ok(())
-            },
+            }
             Err(e) => {
                 tracing::error!("执行 BAT 文件失败: {}", e);
                 Err(format!("执行 BAT 文件失败: {}", e))
             }
         }
     }
-    
+
     #[cfg(not(target_os = "windows"))]
     {
         Err("此功能仅在 Windows 上可用".to_string())
@@ -240,17 +244,17 @@ pub fn execute_bat_file(dir_path: String, bat_file: String) -> Result<(), String
 #[tauri::command]
 pub fn list_chart_categories(maicharts_dir: String) -> Result<Vec<String>, String> {
     let path = Path::new(&maicharts_dir);
-    
+
     if !path.exists() {
         return Ok(Vec::new());
     }
-    
+
     if !path.is_dir() {
         return Err(format!("路径不是目录: {}", maicharts_dir));
     }
-    
+
     let mut categories = Vec::new();
-    
+
     match fs::read_dir(path) {
         Ok(entries) => {
             for entry in entries {
@@ -265,26 +269,29 @@ pub fn list_chart_categories(maicharts_dir: String) -> Result<Vec<String>, Strin
         }
         Err(e) => return Err(format!("读取目录失败: {}", e)),
     }
-    
+
     categories.sort();
     Ok(categories)
 }
 
 /// Tauri命令：列出某个分类下的所有谱面
 #[tauri::command]
-pub fn list_charts_in_category(maicharts_dir: String, category: String) -> Result<Vec<ChartInfo>, String> {
+pub fn list_charts_in_category(
+    maicharts_dir: String,
+    category: String,
+) -> Result<Vec<ChartInfo>, String> {
     let category_path = Path::new(&maicharts_dir).join(&category);
-    
+
     if !category_path.exists() {
         return Ok(Vec::new());
     }
-    
+
     if !category_path.is_dir() {
         return Err(format!("分类路径不是目录: {}", category_path.display()));
     }
-    
+
     let mut charts = Vec::new();
-    
+
     match fs::read_dir(&category_path) {
         Ok(entries) => {
             for entry in entries {
@@ -292,14 +299,17 @@ pub fn list_charts_in_category(maicharts_dir: String, category: String) -> Resul
                     if entry.path().is_dir() {
                         if let Some(name) = entry.file_name().to_str() {
                             let chart_path = entry.path();
-                            
+
                             charts.push(ChartInfo {
                                 name: name.to_string(),
                                 category: category.clone(),
-                                has_bg: chart_path.join("bg.jpg").exists() || chart_path.join("bg.png").exists(),
-                                has_track: chart_path.join("track.mp3").exists() || chart_path.join("track.ogg").exists(),
+                                has_bg: chart_path.join("bg.jpg").exists()
+                                    || chart_path.join("bg.png").exists(),
+                                has_track: chart_path.join("track.mp3").exists()
+                                    || chart_path.join("track.ogg").exists(),
                                 has_maidata: chart_path.join("maidata.txt").exists(),
-                                has_video: chart_path.join("pv.mp4").exists() || chart_path.join("bg.mp4").exists(),
+                                has_video: chart_path.join("pv.mp4").exists()
+                                    || chart_path.join("bg.mp4").exists(),
                             });
                         }
                     }
@@ -308,29 +318,33 @@ pub fn list_charts_in_category(maicharts_dir: String, category: String) -> Resul
         }
         Err(e) => return Err(format!("读取目录失败: {}", e)),
     }
-    
+
     charts.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(charts)
 }
 
 /// Tauri命令：删除谱面
 #[tauri::command]
-pub fn delete_chart(maicharts_dir: String, category: String, chart_name: String) -> Result<(), String> {
+pub fn delete_chart(
+    maicharts_dir: String,
+    category: String,
+    chart_name: String,
+) -> Result<(), String> {
     let chart_path = Path::new(&maicharts_dir).join(&category).join(&chart_name);
-    
+
     if !chart_path.exists() {
         return Err(format!("谱面不存在: {}", chart_path.display()));
     }
-    
+
     if !chart_path.is_dir() {
         return Err(format!("路径不是目录: {}", chart_path.display()));
     }
-    
+
     match fs::remove_dir_all(&chart_path) {
         Ok(_) => {
             tracing::info!("删除谱面成功: {:?}", chart_path);
             Ok(())
-        },
+        }
         Err(e) => {
             tracing::error!("删除谱面失败: {}", e);
             Err(format!("删除谱面失败: {}", e))
@@ -340,31 +354,37 @@ pub fn delete_chart(maicharts_dir: String, category: String, chart_name: String)
 
 /// Tauri命令：移动谱面到另一个分类
 #[tauri::command]
-pub fn move_chart(maicharts_dir: String, from_category: String, to_category: String, chart_name: String) -> Result<(), String> {
-    let from_path = Path::new(&maicharts_dir).join(&from_category).join(&chart_name);
+pub fn move_chart(
+    maicharts_dir: String,
+    from_category: String,
+    to_category: String,
+    chart_name: String,
+) -> Result<(), String> {
+    let from_path = Path::new(&maicharts_dir)
+        .join(&from_category)
+        .join(&chart_name);
     let to_category_path = Path::new(&maicharts_dir).join(&to_category);
     let to_path = to_category_path.join(&chart_name);
-    
+
     if !from_path.exists() {
         return Err(format!("源谱面不存在: {}", from_path.display()));
     }
-    
+
     // 确保目标分类存在
     if !to_category_path.exists() {
-        fs::create_dir_all(&to_category_path)
-            .map_err(|e| format!("创建目标分类失败: {}", e))?;
+        fs::create_dir_all(&to_category_path).map_err(|e| format!("创建目标分类失败: {}", e))?;
     }
-    
+
     // 检查目标位置是否已存在同名谱面
     if to_path.exists() {
         return Err(format!("目标位置已存在同名谱面: {}", to_path.display()));
     }
-    
+
     match fs::rename(&from_path, &to_path) {
         Ok(_) => {
             tracing::info!("移动谱面成功: {:?} -> {:?}", from_path, to_path);
             Ok(())
-        },
+        }
         Err(e) => {
             tracing::error!("移动谱面失败: {}", e);
             Err(format!("移动谱面失败: {}", e))
@@ -376,16 +396,16 @@ pub fn move_chart(maicharts_dir: String, from_category: String, to_category: Str
 #[tauri::command]
 pub fn create_chart_category(maicharts_dir: String, category: String) -> Result<(), String> {
     let category_path = Path::new(&maicharts_dir).join(&category);
-    
+
     if category_path.exists() {
         return Err(format!("分类已存在: {}", category));
     }
-    
+
     match fs::create_dir_all(&category_path) {
         Ok(_) => {
             tracing::info!("创建分类成功: {:?}", category_path);
             Ok(())
-        },
+        }
         Err(e) => {
             tracing::error!("创建分类失败: {}", e);
             Err(format!("创建分类失败: {}", e))
@@ -397,12 +417,12 @@ pub fn create_chart_category(maicharts_dir: String, category: String) -> Result<
 #[tauri::command]
 pub fn create_directory(path: String) -> Result<(), String> {
     let dir_path = Path::new(&path);
-    
+
     match fs::create_dir_all(&dir_path) {
         Ok(_) => {
             tracing::info!("创建目录成功: {:?}", dir_path);
             Ok(())
-        },
+        }
         Err(e) => {
             tracing::error!("创建目录失败: {}", e);
             Err(format!("创建目录失败: {}", e))
@@ -414,20 +434,19 @@ pub fn create_directory(path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn list_skins(skins_dir: String) -> Result<Vec<SkinInfo>, String> {
     let path = Path::new(&skins_dir);
-    
+
     if !path.exists() {
         // 如果目录不存在，尝试创建
-        fs::create_dir_all(path)
-            .map_err(|e| format!("创建皮肤目录失败: {}", e))?;
+        fs::create_dir_all(path).map_err(|e| format!("创建皮肤目录失败: {}", e))?;
         return Ok(Vec::new());
     }
-    
+
     if !path.is_dir() {
         return Err(format!("路径不是目录: {}", skins_dir));
     }
-    
+
     let mut skins = Vec::new();
-    
+
     match fs::read_dir(path) {
         Ok(entries) => {
             for entry in entries {
@@ -446,7 +465,7 @@ pub fn list_skins(skins_dir: String) -> Result<Vec<SkinInfo>, String> {
         }
         Err(e) => return Err(format!("读取目录失败: {}", e)),
     }
-    
+
     skins.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(skins)
 }
@@ -455,20 +474,20 @@ pub fn list_skins(skins_dir: String) -> Result<Vec<SkinInfo>, String> {
 #[tauri::command]
 pub fn delete_skin(skins_dir: String, skin_name: String) -> Result<(), String> {
     let skin_path = Path::new(&skins_dir).join(&skin_name);
-    
+
     if !skin_path.exists() {
         return Err(format!("皮肤不存在: {}", skin_path.display()));
     }
-    
+
     if !skin_path.is_dir() {
         return Err(format!("路径不是目录: {}", skin_path.display()));
     }
-    
+
     match fs::remove_dir_all(&skin_path) {
         Ok(_) => {
             tracing::info!("删除皮肤成功: {:?}", skin_path);
             Ok(())
-        },
+        }
         Err(e) => {
             tracing::error!("删除皮肤失败: {}", e);
             Err(format!("删除皮肤失败: {}", e))
@@ -480,20 +499,20 @@ pub fn delete_skin(skins_dir: String, skin_name: String) -> Result<(), String> {
 #[tauri::command]
 pub fn read_file_content(path: String) -> Result<String, String> {
     let file_path = Path::new(&path);
-    
+
     if !file_path.exists() {
         return Err(format!("文件不存在: {}", path));
     }
-    
+
     if !file_path.is_file() {
         return Err(format!("路径不是文件: {}", path));
     }
-    
+
     match fs::read_to_string(file_path) {
         Ok(content) => {
             tracing::info!("成功读取文件: {:?}", file_path);
             Ok(content)
-        },
+        }
         Err(e) => {
             tracing::error!("读取文件失败: {}", e);
             Err(format!("读取文件失败: {}", e))
@@ -505,20 +524,19 @@ pub fn read_file_content(path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn write_file_content(path: String, content: String) -> Result<(), String> {
     let file_path = Path::new(&path);
-    
+
     // 确保父目录存在
     if let Some(parent) = file_path.parent() {
         if !parent.exists() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("创建父目录失败: {}", e))?;
+            fs::create_dir_all(parent).map_err(|e| format!("创建父目录失败: {}", e))?;
         }
     }
-    
+
     match fs::write(file_path, content) {
         Ok(_) => {
             tracing::info!("成功写入文件: {:?}", file_path);
             Ok(())
-        },
+        }
         Err(e) => {
             tracing::error!("写入文件失败: {}", e);
             Err(format!("写入文件失败: {}", e))

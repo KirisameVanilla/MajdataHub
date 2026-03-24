@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     paths:
-      - 'src-tauri/tauri.conf.json'
+      - "src-tauri/tauri.conf.json"
     branches:
       - main
   workflow_dispatch:
@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,8 +35,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 'latest'
-          cache: 'pnpm'
+          node-version: "latest"
+          cache: "pnpm"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -49,6 +49,16 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Majdata Hub v__VERSION__
+          releaseDraft: false
+          prerelease: false
+          args: ""
 
       - name: Build application
         run: pnpm build
