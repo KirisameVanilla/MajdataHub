@@ -18,15 +18,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract version from tauri.conf.json
-        id: version
-        shell: pwsh
-        run: |
-          $config = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
-          $version = $config.version
-          echo "version=$version" >> $env:GITHUB_OUTPUT
-          echo "Version: $version"
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
@@ -41,7 +32,6 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # 编译缓存
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -51,6 +41,7 @@ jobs:
         run: pnpm install
 
       - uses: tauri-apps/tauri-action@v0
+        id: tauri-build
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -62,3 +53,96 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ""
+
+      - name: Copy artifacts to temp folder
+        if: steps.tauri-build.outcome == 'success'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "temp"
+
+          $artifactPaths = '${{ steps.tauri-build.outputs.artifactPaths }}' | ConvertFrom-Json
+
+          foreach ($path in $artifactPaths) {
+            if (Test-Path $path) {
+              $fileName = Split-Path $path -Leaf
+              Copy-Item -Path $path -Destination "temp/$fileName" -Force
+              Write-Host "Copied: $fileName"
+            } else {
+              Write-Warning "File not found: $path"
+            }
+          }
+
+          Write-Host "All artifacts copied to temp folder"
+
+      - name: Generate latest.json
+        if: steps.tauri-build.outcome == 'success'
+        shell: pwsh
+        env:
+          MIRROR_URL: ${{ vars.CNB_URL }}
+        run: |
+          # 获取当前UTC时间
+          $pubDate = (Get-Date).ToUniversalTime().ToString("o")
+
+          $platforms = @{}
+
+          # 遍历temp目录中的所有文件
+          $files = Get-ChildItem "temp" -File | Where-Object { $_.Extension -ne ".sig" }
+
+          foreach ($file in $files) {
+            $sigPath = Join-Path "temp" "$($file.Name).sig"
+            $signature = ""
+            
+            if (Test-Path $sigPath) {
+              $signature = Get-Content $sigPath -Raw
+            }
+            
+            # 根据文件名确定平台key
+            $platformKey = ""
+            if ($file.Name -like "*x64_en-US*msi") {
+              $platformKey = "windows-x86_64-msi"
+            } elseif ($file.Name -like "*x64_en-US*") {
+              $platformKey = "windows-x86_64"
+            } elseif ($file.Name -like "*x64*setup*") {
+              $platformKey = "windows-x86_64-nsis"
+            } else {
+              continue
+            }
+            
+            $cnbUrl = "$($env:MIRROR_URL)/TeamMajdata/MajdataHub-Build/-/git/raw/master/$($file.Name)?download=true"
+            
+            $platforms[$platformKey] = @{
+              signature = $signature
+              url = $cnbUrl
+            }
+          }
+
+          # 构造JSON对象
+          $latestJson = @{
+            version = '${{ steps.tauri-build.outputs.appVersion }}'
+            notes = ""
+            pub_date = $pubDate
+            platforms = $platforms
+          } | ConvertTo-Json -Depth 10
+
+          # 写入latest.json到temp目录
+          Set-Content -Path "temp/latest.json" -Value $latestJson
+          Write-Host "Generated latest.json in temp folder"
+
+      - name: Commit files in temp folder
+        if: steps.tauri-build.outcome == 'success'
+        shell: bash
+        env:
+          MIRROR_URL: ${{ vars.CNB_URL }}
+          MIRROR_TOKEN: ${{ vars.CNB_TOKEN }}
+        run: |
+          cd temp
+          git init
+          git checkout -b main
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "hentai lolicon"
+          AUTH_URL=$(echo "$MIRROR_URL" | sed -E "s#https://#https://x-access-token:${MIRROR_TOKEN}@#")
+          git remote remove mirror 2>/dev/null || true
+          git remote add mirror "$AUTH_URL"
+          git push mirror --all --force
