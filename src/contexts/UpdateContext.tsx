@@ -1,15 +1,27 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { notifications } from '@mantine/notifications';
 
-export function useAutoUpdate() {
+interface UpdateContextType {
+  isChecking: boolean;
+  updateAvailable: boolean;
+  updateInfo: Update | null;
+  isInstalling: boolean;
+  checkForUpdates: () => Promise<void>;
+  installUpdate: () => Promise<void>;
+}
+
+const UpdateContext = createContext<UpdateContextType | undefined>(undefined);
+
+export function UpdateProvider({ children }: { children: ReactNode }) {
   const [isChecking, setIsChecking] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<Update | null>(null);
   const [isInstalling, setIsInstalling] = useState(false);
 
   useEffect(() => {
+    // 应用启动时自动检查更新
     checkForUpdates();
   }, []);
 
@@ -18,9 +30,7 @@ export function useAutoUpdate() {
 
     setIsChecking(true);
     try {
-      const update = await check({
-        timeout: 1000
-      });
+      const update = await check();
 
       if (update) {
         setUpdateAvailable(true);
@@ -120,12 +130,26 @@ export function useAutoUpdate() {
     }
   };
 
-  return {
-    isChecking,
-    updateAvailable,
-    updateInfo,
-    isInstalling,
-    checkForUpdates,
-    installUpdate,
-  };
+  return (
+    <UpdateContext.Provider
+      value={{
+        isChecking,
+        updateAvailable,
+        updateInfo,
+        isInstalling,
+        checkForUpdates,
+        installUpdate,
+      }}
+    >
+      {children}
+    </UpdateContext.Provider>
+  );
+}
+
+export function useUpdateContext() {
+  const context = useContext(UpdateContext);
+  if (context === undefined) {
+    throw new Error('useUpdateContext must be used within an UpdateProvider');
+  }
+  return context;
 }

@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Text, Card, TextInput, Button, Group, Stack, ActionIcon, Select } from '@mantine/core';
-import { IconFolder, IconDeviceFloppy, IconFolderOpen, IconNetwork, IconCloudDownload } from '@tabler/icons-react';
+import { Container, Title, Text, Card, TextInput, Button, Group, Stack, ActionIcon, Select, Badge, Loader } from '@mantine/core';
+import { IconFolder, IconDeviceFloppy, IconFolderOpen, IconNetwork, IconCloudDownload, IconRefresh, IconDownload } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { open } from '@tauri-apps/plugin-dialog';
-import { usePathContext } from '../contexts';
+import { getVersion } from '@tauri-apps/api/app';
+import { usePathContext, useUpdateContext } from '../contexts';
 
 export function SettingPage() {
   const { appExeFolderPath, defaultGameFolderPath } = usePathContext();
+  const { isChecking, updateAvailable, updateInfo, isInstalling, checkForUpdates, installUpdate } = useUpdateContext();
+
   if (!appExeFolderPath || !defaultGameFolderPath) {
     return (
       <Container size="xl" py="xl">
@@ -14,9 +17,11 @@ export function SettingPage() {
       </Container>
     );
   }
+
   const [gamePath, setGamePath] = useState<string>(defaultGameFolderPath);
   const [httpProxy, setHttpProxy] = useState<string>('');
   const [downloadSource, setDownloadSource] = useState<string>('cnb');
+  const [currentVersion, setCurrentVersion] = useState<string>('');
 
   useEffect(() => {
     const savedPath = localStorage.getItem('gamePath');
@@ -31,6 +36,13 @@ export function SettingPage() {
     if (savedSource) {
       setDownloadSource(savedSource);
     }
+
+    // 获取当前应用版本
+    getVersion().then(version => {
+      setCurrentVersion(version);
+    }).catch(error => {
+      console.error('获取版本号失败:', error);
+    });
   }, []);
 
   const handleSelectFolder = async () => {
@@ -75,14 +87,62 @@ export function SettingPage() {
         </Text>
       </div>
 
+      {/* 版本管理 Card */}
+      <Card shadow="sm" padding="lg" radius="md" withBorder>
+        <Stack gap="md">
+          <div>
+            <Text size="lg" fw={600}>版本管理</Text>
+            <Text size="sm" c="dimmed">查看当前版本并检查更新</Text>
+          </div>
+
+          <Group justify="space-between" align="center">
+            <div>
+              <Text size="sm" c="dimmed">当前版本</Text>
+              <Text size="lg" fw={500}>{currentVersion || '加载中...'}</Text>
+            </div>
+            {updateAvailable && updateInfo && (
+              <Badge color="blue" size="lg">
+                新版本 {updateInfo.version} 可用
+              </Badge>
+            )}
+            {!updateAvailable && !isChecking && currentVersion && (
+              <Badge color="green" size="lg">
+                已是最新版本
+              </Badge>
+            )}
+          </Group>
+
+          <Group justify="flex-end">
+            <Button
+              leftSection={isChecking ? <Loader size={18} /> : <IconRefresh size={18} />}
+              onClick={checkForUpdates}
+              variant="light"
+              disabled={isChecking || isInstalling}
+            >
+              {isChecking ? '检查中...' : '检查更新'}
+            </Button>
+            {updateAvailable && (
+              <Button
+                leftSection={isInstalling ? <Loader size={18} /> : <IconDownload size={18} />}
+                onClick={installUpdate}
+                color="blue"
+                disabled={isInstalling || isChecking}
+              >
+                {isInstalling ? '更新中...' : '立即更新'}
+              </Button>
+            )}
+          </Group>
+        </Stack>
+      </Card>
+
       <Card shadow="sm" mt='sm' padding="lg" radius="md" withBorder>
         <Stack gap="md">
           <TextInput
             leftSection={<IconFolder size={18} />}
             rightSection={
-              <ActionIcon 
-                variant="subtle" 
-                color="blue" 
+              <ActionIcon
+                variant="subtle"
+                color="blue"
                 onClick={handleSelectFolder}
                 title="选择文件夹"
               >

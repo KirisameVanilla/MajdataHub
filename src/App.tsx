@@ -3,28 +3,27 @@ import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { Layout } from './components';
 import { HomePage, ChartPage, SkinPage, SettingPage, GamePage } from './pages';
-import { useAutoUpdate } from './hooks/useAutoUpdate';
+import { UpdateProvider } from './contexts';
 
 function App() {
-  // 启动时自动检查更新
-  useAutoUpdate();
-
   return (
     <MantineProvider>
       <Notifications position="top-right" />
-      <BrowserRouter>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/game" element={<GamePage />} />
-            <Route path="/chart" element={<ChartPage />} />
-            <Route path="/skin" element={<SkinPage />} />
-            <Route path="/setting" element={<SettingPage />} />
-            {/* <Route path="/debug" element={<DebugPage />} /> */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Layout>
-      </BrowserRouter>
+      <UpdateProvider>
+        <BrowserRouter>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/game" element={<GamePage />} />
+              <Route path="/chart" element={<ChartPage />} />
+              <Route path="/skin" element={<SkinPage />} />
+              <Route path="/setting" element={<SettingPage />} />
+              {/* <Route path="/debug" element={<DebugPage />} /> */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Layout>
+        </BrowserRouter>
+      </UpdateProvider>
     </MantineProvider>
   );
 }
