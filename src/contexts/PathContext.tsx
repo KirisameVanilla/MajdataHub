@@ -1,15 +1,19 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { appDataDir, appLocalDataDir, appCacheDir, resourceDir, join } from '@tauri-apps/api/path';
-import { invoke } from '@tauri-apps/api/core';
+import { api } from '../api/client';
+
+interface AppPaths {
+  exePath: string;
+  exeFolderPath: string;
+  gameFolderPath: string;
+  maichartsPath: string;
+  skinsPath: string;
+}
 
 interface PathContextType {
-  appExePath: string | null;
   appExeFolderPath: string | null;
-  appDataPath: string | null;
-  appLocalDataPath: string | null;
-  appCachePath: string | null;
   defaultGameFolderPath: string | null;
-  resourcePath: string | null;
+  maichartsPath: string | null;
+  skinsPath: string | null;
   isLoading: boolean;
   error: string | null;
 }
@@ -29,13 +33,10 @@ interface PathProviderProps {
 }
 
 export const PathProvider: React.FC<PathProviderProps> = ({ children }) => {
-  const [appExePath, setAppExePath] = useState<string | null>(null);
   const [appExeFolderPath, setAppExeFolderPath] = useState<string | null>(null);
-  const [appDataPath, setAppDataPath] = useState<string | null>(null);
-  const [appLocalDataPath, setAppLocalDataPath] = useState<string | null>(null);
-  const [appCachePath, setAppCachePath] = useState<string | null>(null);
-  const [resourcePath, setResourcePath] = useState<string | null>(null);
   const [defaultGameFolderPath, setDefaultGameFolderPath] = useState<string | null>(null);
+  const [maichartsPath, setMaichartsPath] = useState<string | null>(null);
+  const [skinsPath, setSkinsPath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,39 +44,16 @@ export const PathProvider: React.FC<PathProviderProps> = ({ children }) => {
     const loadPaths = async () => {
       try {
         setIsLoading(true);
-        
-        // 获取各种路径
-        const [
-          appData,
-          appLocalData,
-          appCache,
-          resource
-        ] = await Promise.all([
-          appDataDir(),
-          appLocalDataDir(),
-          appCacheDir(),
-          resourceDir(),
-        ]);
 
-        setAppDataPath(appData);
-        setAppLocalDataPath(appLocalData);
-        setAppCachePath(appCache);
-        setResourcePath(resource);
+        const savedGamePath = localStorage.getItem('gamePath');
+        const paths = await api.get<AppPaths>('/api/paths');
 
-        // 尝试获取exe路径（需要在Rust端实现）
-        try {
-          const exePath = await invoke<string>('get_app_exe_path');
-          const exeFolderPath = await invoke<string>('get_app_exe_folder_path');
-          setAppExePath(exePath);
-          setAppExeFolderPath(exeFolderPath);
-          setDefaultGameFolderPath(await join(exeFolderPath, 'game'));
-        } catch (err) {
-          console.warn('无法获取exe路径:', err);
-          // 如果未实现该命令，使用resource目录作为备选
-          setAppExePath(resource);
-          setAppExeFolderPath(resource);
-          setDefaultGameFolderPath(await join(resource, 'game'));
-        }
+        const gamePath = savedGamePath || paths.gameFolderPath;
+
+        setAppExeFolderPath(paths.exeFolderPath);
+        setDefaultGameFolderPath(gamePath);
+        setMaichartsPath(gamePath ? `${gamePath}\\MaiCharts` : null);
+        setSkinsPath(gamePath ? `${gamePath}\\Skins` : null);
 
         setError(null);
       } catch (err) {
@@ -89,17 +67,16 @@ export const PathProvider: React.FC<PathProviderProps> = ({ children }) => {
     loadPaths();
   }, []);
 
-  const value: PathContextType = {
-    appExePath,
-    appExeFolderPath,
-    appDataPath,
-    appLocalDataPath,
-    appCachePath,
-    resourcePath,
-    defaultGameFolderPath,
-    isLoading,
-    error,
-  };
-
-  return <PathContext.Provider value={value}>{children}</PathContext.Provider>;
+  return (
+    <PathContext.Provider value={{
+      appExeFolderPath,
+      defaultGameFolderPath,
+      maichartsPath,
+      skinsPath,
+      isLoading,
+      error,
+    }}>
+      {children}
+    </PathContext.Provider>
+  );
 };

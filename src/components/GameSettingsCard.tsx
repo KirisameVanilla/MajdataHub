@@ -3,8 +3,7 @@ import { Card, LoadingOverlay, Group, Title, Button, Tabs, Alert } from '@mantin
 import { notifications } from '@mantine/notifications';
 import { IconSettings, IconDeviceGamepad, IconVolume, IconEye, IconAdjustments, IconCheck, IconAlertCircle, IconBug, IconWorld, IconPlug } from '@tabler/icons-react';
 import { GameSettings } from '../types';
-import { invoke } from '@tauri-apps/api/core';
-import { join } from '@tauri-apps/api/path';
+import { api } from '../api/client';
 import { GameTab } from './GameSettingsCard/GameTab';
 import { JudgeTab } from './GameSettingsCard/JudgeTab';
 import { DisplayTab } from './GameSettingsCard/DisplayTab';
@@ -33,11 +32,11 @@ export function GameSettingsCard({ gameFolderPath, hasGameExe }: GameSettingsCar
 
       try {
         setIsLoadingSettings(true);
-        const settingsPath = await join(gameFolderPath, 'settings.json');
-        const fileExists = await invoke<boolean>('file_exists', { path: settingsPath });
-        
+        const settingsPath = `${gameFolderPath}\\settings.json`;
+        const fileExists = await api.get<boolean>(`/api/fs/exists?path=${encodeURIComponent(settingsPath)}`);
+
         if (fileExists) {
-          const content = await invoke<string>('read_file_content', { path: settingsPath });
+          const content = await api.get<string>(`/api/fs/read?path=${encodeURIComponent(settingsPath)}`);
           const settings = JSON.parse(content) as GameSettings;
           setGameSettings(settings);
         } else {
@@ -65,10 +64,10 @@ export function GameSettingsCard({ gameFolderPath, hasGameExe }: GameSettingsCar
 
     try {
       setIsSavingSettings(true);
-      const settingsPath = await join(gameFolderPath, 'settings.json');
+      const settingsPath = `${gameFolderPath}\\settings.json`;
       const content = JSON.stringify(gameSettings, null, 2);
-      
-      await invoke('write_file_content', {
+
+      await api.post('/api/fs/write', {
         path: settingsPath,
         content: content,
       });

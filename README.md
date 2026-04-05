@@ -6,7 +6,7 @@
   <h3>🎵 Majdata Hub</h3>
   <p>一个用于管理 MajdataPlay 谱面和皮肤的桌面应用</p>
   
-  ![Version](https://img.shields.io/badge/version-0.4.1-blue.svg)
+  ![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)
   ![License](https://img.shields.io/badge/license-MIT-green.svg)
   ![Tauri](https://img.shields.io/badge/Tauri-2.0-orange.svg)
   ![React](https://img.shields.io/badge/React-19-61dafb.svg)

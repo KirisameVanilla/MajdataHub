@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import { Container, Card, Group, Text, Button, Badge, Stack, Select, Modal, ActionIcon, Grid, Accordion, LoadingOverlay, Image, TextInput, Divider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconTrash, IconFolderSymlink, IconPlus } from '@tabler/icons-react';
-import { invoke } from '@tauri-apps/api/core';
-import { convertFileSrc } from '@tauri-apps/api/core';
-import { ask } from '@tauri-apps/plugin-dialog';
+import { api } from '../api/client';
+import { fileSrc } from '../api/files';
 import { usePathContext } from '../contexts';
 
 interface ChartInfo {
@@ -18,12 +17,12 @@ interface ChartInfo {
 
 // 单独的图片组件，用于处理 jpg/png 回退
 function ChartImage({ path, hasBg, alt }: { path: string; hasBg: boolean; alt: string }) {
-  const [imgSrc, setImgSrc] = useState(convertFileSrc(`${path}\\bg.jpg`));
+  const [imgSrc, setImgSrc] = useState(fileSrc(`${path}\\bg.jpg`));
   const [imgError, setImgError] = useState(false);
 
   const handleError = () => {
     if (imgSrc.includes('bg.jpg')) {
-      setImgSrc(convertFileSrc(`${path}\\bg.png`));
+      setImgSrc(fileSrc(`${path}\\bg.png`));
     } else {
       setImgError(true);
     }
@@ -76,16 +75,13 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
       const maichartsPath = `${defaultGameFolderPath}\\MaiCharts`;
       
       // 加载所有分类
-      const cats = await invoke<string[]>('list_chart_categories', { maichartsDir: maichartsPath });
+      const cats = await api.get<string[]>(`/api/charts/categories?maichartsDir=${encodeURIComponent(maichartsPath)}`);
       setCategories(cats);
 
       // 加载每个分类的谱面
       const chartData: Record<string, ChartInfo[]> = {};
       for (const category of cats) {
-        const charts = await invoke<ChartInfo[]>('list_charts_in_category', { 
-          maichartsDir: maichartsPath,
-          category 
-        });
+        const charts = await api.get<ChartInfo[]>(`/api/charts/list?maichartsDir=${encodeURIComponent(maichartsPath)}&category=${encodeURIComponent(category)}`);
         chartData[category] = charts;
       }
       setChartsByCategory(chartData);
@@ -104,15 +100,12 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
   const handleDeleteChart = async (chart: ChartInfo) => {
     if (!defaultGameFolderPath) return;
 
-    const confirmed = await ask(`确定要删除谱面 "${chart.name}" 吗？此操作不可恢复！`, {
-      title: '确认删除',
-      kind: 'warning',
-    });
+    const confirmed = window.confirm(`确定要删除谱面 "${chart.name}" 吗？此操作不可恢复！`);
     if (!confirmed) return;
 
     try {
       const maichartsPath = `${defaultGameFolderPath}\\MaiCharts`;
-      await invoke('delete_chart', {
+      await api.delete('/api/charts/chart', {
         maichartsDir: maichartsPath,
         category: chart.category,
         chartName: chart.name,
@@ -158,14 +151,14 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
 
       // 如果是新分类，先创建
       if (newCategoryName && !categories.includes(finalCategory)) {
-        await invoke('create_chart_category', {
+        await api.post('/api/charts/category', {
           maichartsDir: maichartsPath,
           category: finalCategory,
         });
         setCategories([...categories, finalCategory]);
       }
 
-      await invoke('move_chart', {
+      await api.post('/api/charts/move', {
         maichartsDir: maichartsPath,
         fromCategory: chartToMove.category,
         toCategory: finalCategory,

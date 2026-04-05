@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { api } from '../api/client';
 
 const ROOT_EXCLUDE_FILES = [
   "smallest_hashes.json",
@@ -21,13 +21,12 @@ export interface FileChecksum {
   checksum: string;
 }
 
-// 计算文件夹中所有文件的校验和
 export async function calculateChecksums(
   directory: string,
   excludeFiles: string[] = ROOT_EXCLUDE_FILES
 ): Promise<FileChecksum[]> {
   try {
-    const result = await invoke<FileChecksum[]>('calculate_checksums', {
+    const result = await api.post<FileChecksum[]>('/api/checksums/calculate', {
       directory,
       excludeFiles,
     });
@@ -38,14 +37,13 @@ export async function calculateChecksums(
   }
 }
 
-// 保存文件校验和信息到 JSON 文件
 export async function saveChecksumsToFile(
   directory: string,
   outputFile: string,
   excludeFiles: string[] = ROOT_EXCLUDE_FILES
 ): Promise<string> {
   try {
-    const result = await invoke<string>('save_checksums_to_file', {
+    const result = await api.post<string>('/api/checksums/save', {
       directory,
       outputFile,
       excludeFiles,

@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
-const tauriConfPath = resolve(root, 'src-tauri', 'tauri.conf.json');
 const packageJsonPath = resolve(root, 'package.json');
 const readmePath = resolve(root, 'README.md');
 const cargoTomlPath = resolve(root, 'src-tauri', 'Cargo.toml');
@@ -20,16 +19,12 @@ function bumpMinor(version) {
   return parts.join('.');
 }
 
-// 更新 tauri.conf.json
-const tauriConf = JSON.parse(readFileSync(tauriConfPath, 'utf-8'));
-const oldVersion = tauriConf.version;
+// 获取旧版本号
+const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+const oldVersion = packageJson.version;
 const newVersion = bumpMinor(oldVersion);
 
-tauriConf.version = newVersion;
-writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n', 'utf-8');
-
 // 更新 package.json
-const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 packageJson.version = newVersion;
 writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n', 'utf-8');
 
@@ -50,3 +45,4 @@ const updatedReadme = readme.replace(
 writeFileSync(readmePath, updatedReadme, 'utf-8');
 
 console.log(`版本已从 ${oldVersion} 升级到 ${newVersion}`);
+

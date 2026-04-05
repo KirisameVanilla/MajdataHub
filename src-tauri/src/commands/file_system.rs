@@ -1,3 +1,4 @@
+use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
@@ -29,45 +30,64 @@ pub struct SkinInfo {
     pub name: String,
 }
 
-/// Tauri命令：获取应用程序可执行文件的完整路径
-#[tauri::command]
-pub fn get_app_exe_path() -> Result<String, String> {
-    env::current_exe()
-        .map_err(|e| format!("Failed to get executable path: {}", e))
-        .and_then(|path| {
-            path.to_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| "Invalid path encoding".to_string())
-        })
+/// 应用程序路径
+#[derive(Debug, Clone, Serialize)]
+pub struct AppPaths {
+    pub exe_path: String,
+    pub exe_folder_path: String,
+    pub game_folder_path: String,
+    pub maicharts_path: String,
+    pub skins_path: String,
 }
 
-/// Tauri命令：获取应用程序可执行文件所在的文件夹路径
-#[tauri::command]
-pub fn get_app_exe_folder_path() -> Result<String, String> {
-    env::current_exe()
-        .map_err(|e| format!("Failed to get executable path: {}", e))
-        .and_then(|path| {
-            path.parent()
-                .and_then(|p| p.to_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| "Invalid path encoding".to_string())
-        })
+/// 获取应用程序路径集合
+pub fn get_app_paths() -> Result<AppPaths, String> {
+    let exe_path =
+        env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
+    let exe_str = exe_path
+        .to_str()
+        .ok_or_else(|| "Invalid path encoding".to_string())?
+        .to_string();
+
+    let exe_folder = exe_path
+        .parent()
+        .and_then(|p| p.to_str())
+        .ok_or_else(|| "Invalid path encoding".to_string())?
+        .to_string();
+
+    let game_folder = Path::new(&exe_folder).join("game");
+    let game_folder_path = game_folder
+        .to_str()
+        .ok_or_else(|| "Invalid path encoding".to_string())?
+        .to_string();
+
+    let maicharts_path = game_folder
+        .join("MaiCharts")
+        .to_str()
+        .ok_or_else(|| "Invalid path encoding".to_string())?
+        .to_string();
+
+    let skins_path = game_folder
+        .join("Skins")
+        .to_str()
+        .ok_or_else(|| "Invalid path encoding".to_string())?
+        .to_string();
+
+    Ok(AppPaths {
+        exe_path: exe_str,
+        exe_folder_path: exe_folder,
+        game_folder_path,
+        maicharts_path,
+        skins_path,
+    })
 }
 
-/// Tauri命令：检查文件是否存在
-#[tauri::command]
+/// 检查文件是否存在
 pub fn file_exists(path: String) -> Result<bool, String> {
     Ok(Path::new(&path).exists())
 }
 
-/// Tauri命令：示例问候命令
-#[tauri::command]
-pub fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-/// Tauri命令：获取游戏启动选项列表（内置）
-#[tauri::command]
+/// 获取游戏启动选项列表（内置）
 pub fn get_launch_options() -> Vec<LaunchOption> {
     vec![
         LaunchOption {
@@ -108,8 +128,7 @@ pub fn get_launch_options() -> Vec<LaunchOption> {
     ]
 }
 
-/// Tauri命令：根据启动选项ID启动游戏
-#[tauri::command]
+/// 根据启动选项ID启动游戏
 pub fn launch_game(game_dir: String, option_id: String) -> Result<(), String> {
     tracing::info!(
         "准备启动游戏，游戏目录: {}，启动选项: {}",
@@ -142,7 +161,6 @@ pub fn launch_game(game_dir: String, option_id: String) -> Result<(), String> {
 
         tracing::info!("使用参数启动游戏: {:?}", args);
 
-        // 启动游戏
         match Command::new(&game_exe)
             .args(&args)
             .current_dir(&game_dir)
@@ -150,11 +168,6 @@ pub fn launch_game(game_dir: String, option_id: String) -> Result<(), String> {
         {
             Ok(_) => {
                 tracing::info!("游戏启动成功");
-                // 如果是编辑模式，等待一下然后启动编辑器
-                if option_id == "edit" {
-                    // 注意：这里只启动游戏，编辑器需要用户手动启动
-                    // 或者可以提示用户等待游戏打开后再启动编辑器
-                }
                 Ok(())
             }
             Err(e) => {
@@ -170,8 +183,7 @@ pub fn launch_game(game_dir: String, option_id: String) -> Result<(), String> {
     }
 }
 
-/// Tauri命令：列出指定目录下的所有 .bat 文件（已弃用，保留用于兼容）
-#[tauri::command]
+/// 列出指定目录下的所有 .bat 文件（已弃用，保留用于兼容）
 pub fn list_bat_files(dir_path: String) -> Result<Vec<String>, String> {
     let path = Path::new(&dir_path);
 
@@ -204,8 +216,7 @@ pub fn list_bat_files(dir_path: String) -> Result<Vec<String>, String> {
     Ok(bat_files)
 }
 
-/// Tauri命令：执行指定的 .bat 文件（已弃用，保留用于兼容）
-#[tauri::command]
+/// 执行指定的 .bat 文件（已弃用，保留用于兼容）
 pub fn execute_bat_file(dir_path: String, bat_file: String) -> Result<(), String> {
     tracing::info!("执行 BAT 文件: {}/{}", dir_path, bat_file);
 
@@ -240,8 +251,7 @@ pub fn execute_bat_file(dir_path: String, bat_file: String) -> Result<(), String
     }
 }
 
-/// Tauri命令：列出所有谱面分类
-#[tauri::command]
+/// 列出所有谱面分类
 pub fn list_chart_categories(maicharts_dir: String) -> Result<Vec<String>, String> {
     let path = Path::new(&maicharts_dir);
 
@@ -274,8 +284,7 @@ pub fn list_chart_categories(maicharts_dir: String) -> Result<Vec<String>, Strin
     Ok(categories)
 }
 
-/// Tauri命令：列出某个分类下的所有谱面
-#[tauri::command]
+/// 列出某个分类下的所有谱面
 pub fn list_charts_in_category(
     maicharts_dir: String,
     category: String,
@@ -323,8 +332,7 @@ pub fn list_charts_in_category(
     Ok(charts)
 }
 
-/// Tauri命令：删除谱面
-#[tauri::command]
+/// 删除谱面
 pub fn delete_chart(
     maicharts_dir: String,
     category: String,
@@ -352,8 +360,7 @@ pub fn delete_chart(
     }
 }
 
-/// Tauri命令：移动谱面到另一个分类
-#[tauri::command]
+/// 移动谱面到另一个分类
 pub fn move_chart(
     maicharts_dir: String,
     from_category: String,
@@ -392,8 +399,7 @@ pub fn move_chart(
     }
 }
 
-/// Tauri命令：创建新的谱面分类
-#[tauri::command]
+/// 创建新的谱面分类
 pub fn create_chart_category(maicharts_dir: String, category: String) -> Result<(), String> {
     let category_path = Path::new(&maicharts_dir).join(&category);
 
@@ -413,8 +419,7 @@ pub fn create_chart_category(maicharts_dir: String, category: String) -> Result<
     }
 }
 
-/// Tauri命令：创建目录
-#[tauri::command]
+/// 创建目录
 pub fn create_directory(path: String) -> Result<(), String> {
     let dir_path = Path::new(&path);
 
@@ -430,8 +435,7 @@ pub fn create_directory(path: String) -> Result<(), String> {
     }
 }
 
-/// Tauri命令：列出所有皮肤
-#[tauri::command]
+/// 列出所有皮肤
 pub fn list_skins(skins_dir: String) -> Result<Vec<SkinInfo>, String> {
     let path = Path::new(&skins_dir);
 
@@ -452,7 +456,6 @@ pub fn list_skins(skins_dir: String) -> Result<Vec<SkinInfo>, String> {
             for entry in entries {
                 if let Ok(entry) = entry {
                     let entry_path = entry.path();
-                    // 列出文件夹（皮肤是解压后的文件夹）
                     if entry_path.is_dir() {
                         if let Some(name) = entry.file_name().to_str() {
                             skins.push(SkinInfo {
@@ -470,8 +473,7 @@ pub fn list_skins(skins_dir: String) -> Result<Vec<SkinInfo>, String> {
     Ok(skins)
 }
 
-/// Tauri命令：删除皮肤
-#[tauri::command]
+/// 删除皮肤
 pub fn delete_skin(skins_dir: String, skin_name: String) -> Result<(), String> {
     let skin_path = Path::new(&skins_dir).join(&skin_name);
 
@@ -495,8 +497,7 @@ pub fn delete_skin(skins_dir: String, skin_name: String) -> Result<(), String> {
     }
 }
 
-/// Tauri命令：读取文件内容
-#[tauri::command]
+/// 读取文件内容
 pub fn read_file_content(path: String) -> Result<String, String> {
     let file_path = Path::new(&path);
 
@@ -520,8 +521,7 @@ pub fn read_file_content(path: String) -> Result<String, String> {
     }
 }
 
-/// Tauri命令：写入文件内容
-#[tauri::command]
+/// 写入文件内容
 pub fn write_file_content(path: String, content: String) -> Result<(), String> {
     let file_path = Path::new(&path);
 
@@ -541,5 +541,22 @@ pub fn write_file_content(path: String, content: String) -> Result<(), String> {
             tracing::error!("写入文件失败: {}", e);
             Err(format!("写入文件失败: {}", e))
         }
+    }
+}
+
+/// 打开文件夹选择对话框
+pub fn pick_folder() -> Result<String, String> {
+    let path = FileDialog::new().pick_folder();
+
+    match path {
+        Some(folder_path) => {
+            let path_str = folder_path
+                .to_str()
+                .ok_or_else(|| "Invalid path encoding".to_string())?
+                .to_string();
+            tracing::info!("用户选择的文件夹: {}", path_str);
+            Ok(path_str)
+        }
+        None => Err("用户取消了文件夹选择".to_string()),
     }
 }

@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { Container, Card, Group, Text, Button, Stack, LoadingOverlay, Grid } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconTrash, IconRefresh } from '@tabler/icons-react';
-import { invoke } from '@tauri-apps/api/core';
-import { ask } from '@tauri-apps/plugin-dialog';
+import { api } from '../api/client';
 import { usePathContext } from '../contexts';
 
 interface SkinInfo {
@@ -40,7 +39,7 @@ export function LocalSkins({ onRefresh, refreshTrigger }: LocalSkinsProps) {
       setLoading(true);
       const skinsPath = `${defaultGameFolderPath}\\Skins`;
       
-      const skinList = await invoke<SkinInfo[]>('list_skins', { skinsDir: skinsPath });
+      const skinList = await api.get<SkinInfo[]>(`/api/skins/list?skinsDir=${encodeURIComponent(skinsPath)}`);
       setSkins(skinList);
     } catch (error) {
       console.error('加载皮肤失败:', error);
@@ -57,15 +56,12 @@ export function LocalSkins({ onRefresh, refreshTrigger }: LocalSkinsProps) {
   const handleDeleteSkin = async (skin: SkinInfo) => {
     if (!defaultGameFolderPath) return;
 
-    const confirmed = await ask(`确定要删除皮肤 "${skin.name}" 吗？此操作不可恢复！`, {
-      title: '确认删除',
-      kind: 'warning',
-    });
+    const confirmed = window.confirm(`确定要删除皮肤 "${skin.name}" 吗？此操作不可恢复！`);
     if (!confirmed) return;
 
     try {
       const skinsPath = `${defaultGameFolderPath}\\Skins`;
-      await invoke('delete_skin', {
+      await api.delete('/api/skins/skin', {
         skinsDir: skinsPath,
         skinName: skin.name,
       });
