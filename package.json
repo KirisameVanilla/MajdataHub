@@ -1,13 +1,13 @@
 {
   "name": "majdata-hub",
   "private": true,
-  "version": "0.5.1",
+  "version": "0.5.2",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"pnpm vite:dev\" \"cargo run --manifest-path src-tauri/Cargo.toml\"",
+    "dev": "concurrently \"pnpm vite:dev\" \"cargo run --manifest-path src-server/Cargo.toml\"",
     "bump:minor": "node scripts/bump-minor.mjs",
     "bump:fix": "node scripts/bump-fix.mjs",
-    "build": "pnpm vite:build && cargo build --release --manifest-path src-tauri/Cargo.toml",
+    "build": "pnpm vite:build && cargo build --release --manifest-path src-server/Cargo.toml",
     "vite:dev": "vite",
     "vite:build": "tsc && vite build"
   },

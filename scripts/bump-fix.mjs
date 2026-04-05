@@ -7,7 +7,7 @@ const root = resolve(__dirname, '..');
 
 const packageJsonPath = resolve(root, 'package.json');
 const readmePath = resolve(root, 'README.md');
-const cargoTomlPath = resolve(root, 'src-tauri', 'Cargo.toml');
+const cargoTomlPath = resolve(root, 'src-server', 'Cargo.toml');
 
 function bumpFix(version) {
   const parts = version.split('.').map(Number);

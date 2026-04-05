@@ -1,6 +1,6 @@
 [package]
 name = "majdata-hub"
-version = "0.5.1"
+version = "0.5.2"
 description = "Majdata Hub - localhost server"
 authors = ["KirisameVanilla"]
 edition = "2021"

@@ -93,11 +93,11 @@ pub fn run() {
     rt.block_on(async {
         let app = routes::create_router();
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:1420")
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:1421")
             .await
-            .expect("Failed to bind to 127.0.0.1:1420");
+            .expect("Failed to bind to 127.0.0.1:1421");
 
-        let addr = "http://127.0.0.1:1420";
+        let addr = "http://127.0.0.1:1421";
         tracing::info!("服务器运行于 {}", addr);
 
         // 自动打开浏览器
