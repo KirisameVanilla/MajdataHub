@@ -12,7 +12,7 @@ export function Layout({ children }: LayoutProps) {
       header={{ height: 60 }}
       navbar={{
         width: 60,
-        breakpoint: 'sm',
+        breakpoint: 0,
       }}
       padding="md"
       className="h-screen"
