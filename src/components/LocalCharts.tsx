@@ -417,7 +417,36 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
           </Stack>
         </Container>
 
-        <CreateCategoryModal />
+        <Modal
+          opened={createCategoryModalOpen}
+          onClose={() => setCreateCategoryModalOpen(false)}
+          title="创建分类"
+        >
+          <Stack gap="md">
+            <TextInput
+              label="分类名称"
+              placeholder="输入新分类名称"
+              value={createCategoryName}
+              onChange={(e) => setCreateCategoryName(e.currentTarget.value)}
+              leftSection={<IconPlus size={16} />}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateCategory();
+              }}
+            />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setCreateCategoryModalOpen(false)}>
+                取消
+              </Button>
+              <Button
+                onClick={handleCreateCategory}
+                disabled={!createCategoryName.trim()}
+                loading={creatingCategory}
+              >
+                创建
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
       </>
     );
   }
@@ -497,14 +526,7 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
         </Stack>
       </Container>
 
-      <CreateCategoryModal />
-      <MoveModal />
-      <ImportModal />
-    </>
-  );
-
-  function CreateCategoryModal() {
-    return (
+      {/* 创建分类 */}
       <Modal
         opened={createCategoryModalOpen}
         onClose={() => setCreateCategoryModalOpen(false)}
@@ -535,11 +557,8 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
           </Group>
         </Stack>
       </Modal>
-    );
-  }
 
-  function MoveModal() {
-    return (
+      {/* 移动谱面 */}
       <Modal
         opened={moveModalOpen}
         onClose={() => setMoveModalOpen(false)}
@@ -589,13 +608,8 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
           </Group>
         </Stack>
       </Modal>
-    );
-  }
 
-  function ImportModal() {
-    const finalCategory = importCategory || importNewCategory.trim();
-
-    return (
+      {/* 导入谱面 */}
       <Modal
         opened={importModalOpen}
         onClose={closeImportModal}
@@ -605,7 +619,6 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
         <Stack gap="md">
           {!importResults ? (
             <>
-              {/* 选中的文件列表 */}
               <div>
                 <Text size="sm" fw={500} mb="xs">
                   已选择 {selectedFiles.length} 个文件：
@@ -619,7 +632,6 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
                 </Stack>
               </div>
 
-              {/* 分类选择 */}
               <Select
                 label="导入到分类"
                 placeholder="选择已有分类"
@@ -653,7 +665,7 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
                 </Button>
                 <Button
                   onClick={handleImport}
-                  disabled={!finalCategory}
+                  disabled={!(importCategory || importNewCategory.trim())}
                   loading={importing}
                   leftSection={<IconUpload size={16} />}
                 >
@@ -663,7 +675,6 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
             </>
           ) : (
             <>
-              {/* 导入结果 */}
               <Text size="sm" fw={500}>导入结果：</Text>
               <Stack gap={4} style={{ maxHeight: 300, overflowY: 'auto' }}>
                 {importResults.map((result, index) => (
@@ -699,6 +710,6 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
           )}
         </Stack>
       </Modal>
-    );
-  }
+    </>
+  );
 }
