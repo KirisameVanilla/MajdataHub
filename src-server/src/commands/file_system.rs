@@ -2,7 +2,8 @@ use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// 游戏启动选项
@@ -559,4 +560,312 @@ pub fn pick_folder() -> Result<String, String> {
         }
         None => Err("用户取消了文件夹选择".to_string()),
     }
+}
+
+/// 打开文件选择对话框（支持多选）
+pub fn pick_files() -> Result<Vec<String>, String> {
+    let paths = FileDialog::new()
+        .add_filter("ZIP 压缩包", &["zip"])
+        .pick_files();
+
+    match paths {
+        Some(file_paths) => {
+            let path_strs: Vec<String> = file_paths
+                .iter()
+                .filter_map(|p| p.to_str().map(|s| s.to_string()))
+                .collect();
+            tracing::info!("用户选择了 {} 个文件", path_strs.len());
+            Ok(path_strs)
+        }
+        None => Err("用户取消了文件选择".to_string()),
+    }
+}
+
+/// 谱面导入结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportResult {
+    pub file_name: String,
+    /// "imported" | "skipped" | "failed"
+    pub status: String,
+    pub chart_name: Option<String>,
+    pub reason: Option<String>,
+}
+
+/// 批量导入谱面 ZIP 文件
+pub fn import_chart_zips(
+    zip_paths: Vec<String>,
+    maicharts_dir: String,
+    category: String,
+) -> Result<Vec<ImportResult>, String> {
+    let category_path = Path::new(&maicharts_dir).join(&category);
+
+    if !category_path.exists() {
+        fs::create_dir_all(&category_path).map_err(|e| format!("创建分类目录失败: {}", e))?;
+    }
+
+    let mut results = Vec::new();
+
+    for zip_path_str in &zip_paths {
+        let zip_path = Path::new(zip_path_str);
+        let file_name = zip_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        tracing::info!("正在处理: {}", file_name);
+
+        // 创建临时目录
+        let temp_dir = match create_temp_dir() {
+            Ok(dir) => dir,
+            Err(e) => {
+                results.push(ImportResult {
+                    file_name: file_name.clone(),
+                    status: "failed".to_string(),
+                    chart_name: None,
+                    reason: Some(format!("创建临时目录失败: {}", e)),
+                });
+                continue;
+            }
+        };
+
+        // 解压 ZIP（保留目录结构）
+        if let Err(e) = extract_zip_raw(zip_path, &temp_dir) {
+            let _ = fs::remove_dir_all(&temp_dir);
+            results.push(ImportResult {
+                file_name: file_name.clone(),
+                status: "failed".to_string(),
+                chart_name: None,
+                reason: Some(format!("解压失败: {}", e)),
+            });
+            continue;
+        }
+
+        // 查找包含 maidata.txt 的目录
+        let chart_folder = find_chart_folder(&temp_dir);
+
+        let Some(chart_folder) = chart_folder else {
+            let _ = fs::remove_dir_all(&temp_dir);
+            results.push(ImportResult {
+                file_name: file_name.clone(),
+                status: "skipped".to_string(),
+                chart_name: None,
+                reason: Some("ZIP 中未找到包含 maidata.txt 的目录".to_string()),
+            });
+            continue;
+        };
+
+        // 验证必要文件
+        let has_maidata = chart_folder.join("maidata.txt").exists();
+        let has_track = has_track_file(&chart_folder);
+
+        if !has_maidata || !has_track {
+            let _ = fs::remove_dir_all(&temp_dir);
+            let missing_parts = if !has_maidata && !has_track {
+                "maidata.txt、track.*".to_string()
+            } else if !has_maidata {
+                "maidata.txt".to_string()
+            } else {
+                "track.*".to_string()
+            };
+            results.push(ImportResult {
+                file_name: file_name.clone(),
+                status: "skipped".to_string(),
+                chart_name: None,
+                reason: Some(format!("缺少必要文件: {}", missing_parts)),
+            });
+            continue;
+        }
+
+        // 确定谱面名称
+        let chart_name = if chart_folder == temp_dir {
+            // 文件直接在根目录，使用 ZIP 文件名
+            zip_file_name_to_chart_name(&file_name)
+        } else {
+            chart_folder
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| zip_file_name_to_chart_name(&file_name))
+        };
+
+        let target_path = category_path.join(&chart_name);
+
+        if target_path.exists() {
+            let _ = fs::remove_dir_all(&temp_dir);
+            results.push(ImportResult {
+                file_name: file_name.clone(),
+                status: "skipped".to_string(),
+                chart_name: Some(chart_name),
+                reason: Some("目标位置已存在同名谱面".to_string()),
+            });
+            continue;
+        }
+
+        // 移动到目标分类
+        match fs::rename(&chart_folder, &target_path) {
+            Ok(_) => {
+                tracing::info!("导入谱面成功: {} -> {:?}", chart_name, target_path);
+                let _ = fs::remove_dir_all(&temp_dir);
+                results.push(ImportResult {
+                    file_name,
+                    status: "imported".to_string(),
+                    chart_name: Some(chart_name),
+                    reason: None,
+                });
+            }
+            Err(_) => {
+                // rename 可能跨驱动器失败，尝试 copy + delete
+                match copy_dir_recursive(&chart_folder, &target_path) {
+                    Ok(_) => {
+                        tracing::info!("导入谱面成功（复制）: {} -> {:?}", chart_name, target_path);
+                        let _ = fs::remove_dir_all(&temp_dir);
+                        results.push(ImportResult {
+                            file_name,
+                            status: "imported".to_string(),
+                            chart_name: Some(chart_name),
+                            reason: None,
+                        });
+                    }
+                    Err(copy_err) => {
+                        tracing::error!("移动/复制谱面失败: {}", copy_err);
+                        let _ = fs::remove_dir_all(&temp_dir);
+                        results.push(ImportResult {
+                            file_name,
+                            status: "failed".to_string(),
+                            chart_name: Some(chart_name),
+                            reason: Some(format!("移动文件失败: {}", copy_err)),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+/// 创建临时目录
+fn create_temp_dir() -> Result<PathBuf, String> {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let temp_dir = env::temp_dir().join(format!("majdata_import_{}", timestamp));
+    fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
+    Ok(temp_dir)
+}
+
+/// 查找包含 maidata.txt 的目录
+fn find_chart_folder(dir: &Path) -> Option<PathBuf> {
+    // 检查目录本身
+    if dir.join("maidata.txt").exists() {
+        return Some(dir.to_path_buf());
+    }
+
+    // 检查子目录（最多 2 层）
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() && entry.path().join("maidata.txt").exists() {
+                return Some(entry.path());
+            }
+        }
+    }
+
+    // 再检查第二层
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                if let Ok(sub_entries) = fs::read_dir(&entry.path()) {
+                    for sub_entry in sub_entries.flatten() {
+                        if sub_entry.path().is_dir()
+                            && sub_entry.path().join("maidata.txt").exists()
+                        {
+                            return Some(sub_entry.path());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// 检查目录中是否包含 track.* 文件
+fn has_track_file(dir: &Path) -> bool {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.starts_with("track.") && entry.path().is_file() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// 将 ZIP 文件名转换为谱面名称
+fn zip_file_name_to_chart_name(zip_name: &str) -> String {
+    zip_name
+        .strip_suffix(".zip")
+        .unwrap_or(zip_name)
+        .to_string()
+}
+
+/// 解压 ZIP 文件（保留目录结构，不剥离根目录）
+fn extract_zip_raw(zip_path: &Path, target_dir: &Path) -> Result<(), String> {
+    let file = fs::File::open(zip_path).map_err(|e| format!("打开 ZIP 文件失败: {}", e))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("读取 ZIP 文件失败: {}", e))?;
+
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| format!("读取 ZIP 条目失败: {}", e))?;
+
+        let entry_path = entry.name();
+
+        // 跳过绝对路径和路径遍历
+        if entry_path.starts_with('/') || entry_path.contains("..") {
+            continue;
+        }
+
+        let outpath = target_dir.join(entry_path);
+
+        if entry.is_dir() {
+            fs::create_dir_all(&outpath).map_err(|e| format!("创建目录失败: {}", e))?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                fs::create_dir_all(parent).map_err(|e| format!("创建父目录失败: {}", e))?;
+            }
+            let mut outfile =
+                fs::File::create(&outpath).map_err(|e| format!("创建文件失败: {}", e))?;
+            io::copy(&mut entry, &mut outfile).map_err(|e| format!("解压文件失败: {}", e))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// 递归复制目录
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    if !dst.exists() {
+        fs::create_dir_all(dst).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+
+    for entry in fs::read_dir(src).map_err(|e| format!("读取目录失败: {}", e))? {
+        let entry = entry.map_err(|e| format!("读取目录条目失败: {}", e))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path).map_err(|e| format!("复制文件失败: {}", e))?;
+        }
+    }
+
+    Ok(())
 }
