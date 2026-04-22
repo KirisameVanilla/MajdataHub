@@ -1,12 +1,19 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Text, Card, TextInput, Button, Group, Stack, Select, Badge } from '@mantine/core';
-import { IconFolder, IconDeviceFloppy, IconNetwork, IconCloudDownload, IconFolderOpen } from '@tabler/icons-react';
+import { Container, Title, Text, Card, TextInput, Button, Group, Stack, Select, Badge, Progress, Divider } from '@mantine/core';
+import { IconFolder, IconDeviceFloppy, IconNetwork, IconCloudDownload, IconFolderOpen, IconRefresh, IconDownload, IconPlayerPlay } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
-import { usePathContext } from '../contexts';
+import { usePathContext, useUpdateContext } from '../contexts';
 import { api } from '../api/client';
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export function SettingPage() {
   const { defaultGameFolderPath, setGameFolderPath } = usePathContext();
+  const { updateInfo, updateProgress, isChecking, isDownloading, checkForUpdate, startDownload, applyUpdate } = useUpdateContext();
 
   const [gamePath, setGamePath] = useState<string>(defaultGameFolderPath ?? '');
   const [httpProxy, setHttpProxy] = useState<string>('');
@@ -64,6 +71,18 @@ export function SettingPage() {
     }
   };
 
+  const handleDownloadUpdate = () => {
+    if (!updateInfo) return;
+    const url = downloadSource === 'cnb' && updateInfo.downloadUrlCnb
+      ? updateInfo.downloadUrlCnb
+      : updateInfo.downloadUrlGithub;
+    if (url) startDownload(url);
+  };
+
+  const progressPercent = updateProgress && updateProgress.total
+    ? Math.round((updateProgress.downloaded / updateProgress.total) * 100)
+    : 0;
+
   return (
     <Container size="xl" py="xl">
       <div className="mb-8">
@@ -86,6 +105,108 @@ export function SettingPage() {
               v{currentVersion || '...'}
             </Badge>
           </Group>
+
+          <Divider />
+
+          {isChecking && (
+            <Group gap="xs">
+              <IconRefresh size={16} className="animate-spin" />
+              <Text size="sm" c="dimmed">正在检查更新...</Text>
+            </Group>
+          )}
+
+          {!isChecking && updateInfo && !updateInfo.hasUpdate && (
+            <Group justify="space-between">
+              <Text size="sm" c="green">已是最新版本</Text>
+              <Button
+                leftSection={<IconRefresh size={16} />}
+                variant="light"
+                size="xs"
+                onClick={checkForUpdate}
+              >
+                重新检查
+              </Button>
+            </Group>
+          )}
+
+          {!isChecking && updateInfo && updateInfo.hasUpdate && (
+            <>
+              <Group justify="space-between">
+                <Text size="sm">
+                  发现新版本: <Text span fw={600}>v{updateInfo.latestVersion}</Text>
+                </Text>
+                <Badge color="orange">有更新</Badge>
+              </Group>
+
+              {updateInfo.releaseNotes && (
+                <Text size="xs" c="dimmed" lineClamp={4}>
+                  {updateInfo.releaseNotes}
+                </Text>
+              )}
+
+              {isDownloading && updateProgress && updateProgress.status === 'downloading' && (
+                <Stack gap="xs">
+                  <Progress
+                    value={progressPercent}
+                    animated
+                    size="lg"
+                    color="blue"
+                  />
+                  <Text size="xs" c="dimmed">
+                    {formatBytes(updateProgress.downloaded)}
+                    {updateProgress.total ? ` / ${formatBytes(updateProgress.total)}` : ''}
+                    {updateProgress.speed > 0 ? ` — ${formatBytes(updateProgress.speed)}/s` : ''}
+                  </Text>
+                </Stack>
+              )}
+
+              {updateProgress?.status === 'ready' && (
+                <Button
+                  leftSection={<IconPlayerPlay size={16} />}
+                  color="green"
+                  onClick={applyUpdate}
+                >
+                  下载完成，点击重启应用
+                </Button>
+              )}
+
+              {updateProgress?.status === 'failed' && (
+                <Group justify="space-between">
+                  <Text size="sm" c="red">下载失败: {updateProgress.error}</Text>
+                  <Button
+                    leftSection={<IconRefresh size={16} />}
+                    variant="light"
+                    size="xs"
+                    color="red"
+                    onClick={handleDownloadUpdate}
+                  >
+                    重试
+                  </Button>
+                </Group>
+              )}
+
+              {!isDownloading && updateProgress?.status !== 'downloading' && updateProgress?.status !== 'ready' && (
+                <Button
+                  leftSection={<IconDownload size={16} />}
+                  onClick={handleDownloadUpdate}
+                >
+                  下载更新 ({downloadSource === 'cnb' ? 'CNB' : 'GitHub'})
+                </Button>
+              )}
+            </>
+          )}
+
+          {!isChecking && !updateInfo && (
+            <Group justify="flex-end">
+              <Button
+                leftSection={<IconRefresh size={16} />}
+                variant="light"
+                onClick={checkForUpdate}
+              >
+                检查更新
+              </Button>
+            </Group>
+          )}
         </Stack>
       </Card>
 

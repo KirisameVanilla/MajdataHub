@@ -2,6 +2,7 @@
 pub mod checksum;
 pub mod file_system;
 pub mod network;
+pub mod updater;
 pub mod zip;
 
 // 重新导出所有命令函数
@@ -16,4 +17,5 @@ pub use network::{
     clear_api_cache, download_charts_batch, download_file_to_path, download_skin_zip,
     fetch_chart_list, fetch_github_skins, fetch_remote_hashes,
 };
+pub use updater::{apply_update, check_for_update, cleanup_update_files, download_update, UpdateInfo};
 pub use zip::{download_and_extract, extract_zip};
