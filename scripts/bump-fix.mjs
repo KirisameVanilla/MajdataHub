@@ -6,7 +6,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const tauriConfPath = resolve(root, 'src-tauri', 'tauri.conf.json');
-const tauriBuildConfPath = resolve(root, 'src-tauri', 'tauri.build.conf.json');
 const packageJsonPath = resolve(root, 'package.json');
 const readmePath = resolve(root, 'README.md');
 const cargoTomlPath = resolve(root, 'src-tauri', 'Cargo.toml');
@@ -20,19 +19,13 @@ function bumpMinor(version) {
   return parts.join('.');
 }
 
+// 更新 tauri.conf.json
 const tauriConf = JSON.parse(readFileSync(tauriConfPath, 'utf-8'));
-const tauriBuildConf = JSON.parse(readFileSync(tauriBuildConfPath, 'utf-8'));
-
 const oldVersion = tauriConf.version;
 const newVersion = bumpMinor(oldVersion);
 
-// 更新 tauri.conf.json
 tauriConf.version = newVersion;
 writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n', 'utf-8');
-
-// 更新 tauri.build.conf.json
-tauriBuildConf.version = newVersion;
-writeFileSync(tauriBuildConfPath, JSON.stringify(tauriBuildConf, null, 2) + '\n', 'utf-8');
 
 // 更新 package.json
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));

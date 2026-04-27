@@ -1,6 +1,6 @@
 [package]
 name = "majdata-hub"
-version = "0.4.1"
+version = "0.4.0"
 description = "A Tauri App"
 authors = ["KirisameVanilla"]
 edition = "2021"

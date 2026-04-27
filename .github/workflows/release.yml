@@ -52,7 +52,7 @@ jobs:
           releaseName: Majdata Hub v__VERSION__
           releaseDraft: false
           prerelease: false
-          args: "--config src-tauri/tauri.build.conf.json"
+          args: ""
 
       - name: Copy artifacts to temp folder
         if: steps.tauri-build.outcome == 'success'
