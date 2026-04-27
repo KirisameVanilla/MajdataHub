@@ -50,7 +50,8 @@ interface LaunchOption {
 }
 
 export function GamePage() {
-  const { defaultGameFolderPath } = usePathContext();
+  const { gameFolderPath, defaultGameFolderPath } = usePathContext();
+  const effectiveGamePath = gameFolderPath || defaultGameFolderPath;
   const { isDownloading, downloadProgress, downloadedBytes, totalBytes, downloadSpeed,
     setIsDownloading, setDownloadProgress, resetDownloadProgress,
     isUpdating, updateList, setIsUpdating, setUpdateList } = useDownloadContext();
@@ -63,23 +64,23 @@ export function GamePage() {
 
   // isDownloading 从 true 变为 false 时，重新检测 exe（处理切换页面后回来的情况）
   useEffect(() => {
-    if (prevIsDownloading.current && !isDownloading && defaultGameFolderPath) {
-      join(defaultGameFolderPath, 'MajdataPlay.exe').then((p) =>
+    if (prevIsDownloading.current && !isDownloading && effectiveGamePath) {
+      join(effectiveGamePath, 'MajdataPlay.exe').then((p) =>
         invoke<boolean>('file_exists', { path: p }).then(setHasGameExe)
       );
     }
     prevIsDownloading.current = isDownloading;
-  }, [isDownloading, defaultGameFolderPath]);
+  }, [isDownloading, effectiveGamePath]);
 
   useEffect(() => {
     const checkLocalHash = async () => {
-      if (!defaultGameFolderPath) {
+      if (!effectiveGamePath) {
         setIsChecking(false);
         return;
       }
 
       try {
-        const gameFilePath = await join(defaultGameFolderPath, 'MajdataPlay.exe');
+        const gameFilePath = await join(effectiveGamePath, 'MajdataPlay.exe');
         
         const fileExists = await invoke<boolean>('file_exists', { path: gameFilePath });
         setHasGameExe(fileExists);
@@ -97,7 +98,7 @@ export function GamePage() {
     };
 
     checkLocalHash();
-  }, [defaultGameFolderPath]);
+  }, [effectiveGamePath]);
 
   useEffect(() => {
     const loadLaunchOptions = async () => {
@@ -116,12 +117,12 @@ export function GamePage() {
   }, []);
 
   const checkForUpdates = async () => {
-    if (!defaultGameFolderPath) return;
+    if (!effectiveGamePath) return;
 
     try {
       setIsChecking(true);
       
-      const localHashes = await calculateChecksums(defaultGameFolderPath);
+      const localHashes = await calculateChecksums(effectiveGamePath);
       
       const httpProxy = localStorage.getItem('httpProxy') || null;
       const { rawBase } = getDownloadUrls();
@@ -179,7 +180,7 @@ export function GamePage() {
 
   // 下载完整游戏
   const handleDownload = async () => {
-    if (!defaultGameFolderPath) {
+    if (!effectiveGamePath) {
       notifications.show({
         title: '错误',
         message: '游戏文件夹路径未设置',
@@ -204,7 +205,7 @@ export function GamePage() {
       });
 
       // 下载 zip 文件路径
-      const zipPath = await join(defaultGameFolderPath, '..', 'majdata_master.zip');
+      const zipPath = await join(effectiveGamePath, '..', 'majdata_master.zip');
 
       // 从 localStorage 获取代理设置
       const httpProxy = localStorage.getItem('httpProxy') || null;
@@ -213,7 +214,7 @@ export function GamePage() {
       // 使用 Rust 命令下载并解压
       await invoke('download_and_extract', {
         url: zipUrl,
-        targetPath: defaultGameFolderPath,
+        targetPath: effectiveGamePath,
         zipPath: zipPath,
         proxy: httpProxy,
       });
@@ -249,7 +250,7 @@ export function GamePage() {
 
   // 执行更新
   const handleUpdate = async () => {
-    if (!defaultGameFolderPath || updateList.length === 0) return;
+    if (!effectiveGamePath || updateList.length === 0) return;
 
     try {
       setIsUpdating(true);
@@ -275,7 +276,7 @@ export function GamePage() {
           await invoke('download_file_to_path', {
             url: fileUrl,
             filePath: file.filePath,
-            targetDir: defaultGameFolderPath,
+            targetDir: effectiveGamePath,
             proxy: httpProxy,
           });
           return { success: true, file: file.filePath };
@@ -343,7 +344,7 @@ export function GamePage() {
 
   // 启动游戏
   const handleLaunchGame = async () => {
-    if (!defaultGameFolderPath || !selectedOption) {
+    if (!effectiveGamePath || !selectedOption) {
       notifications.show({
         title: '错误',
         message: '请选择启动项',
@@ -357,7 +358,7 @@ export function GamePage() {
       setIsLaunching(true);
       
       await invoke('launch_game', {
-        gameDir: defaultGameFolderPath,
+        gameDir: effectiveGamePath,
         optionId: selectedOption,
       });
 
@@ -395,9 +396,9 @@ export function GamePage() {
       <Card mt='sm' shadow="sm" padding="lg" radius="md" withBorder className="relative">
         <LoadingOverlay visible={isChecking || isUpdating} />
 
-        {defaultGameFolderPath && (
+        {effectiveGamePath && (
           <Alert mb="lg" color="blue" variant="light">
-            <Text size="sm">游戏文件夹: {defaultGameFolderPath}</Text>
+            <Text size="sm">游戏文件夹: {effectiveGamePath}</Text>
           </Alert>
         )}
 
@@ -408,7 +409,7 @@ export function GamePage() {
               leftSection={<IconDownload size={20} />}
               onClick={handleDownload}
               loading={isDownloading}
-              disabled={!defaultGameFolderPath}
+              disabled={!effectiveGamePath}
               mb='sm'
             >
               下载游戏
@@ -524,9 +525,9 @@ export function GamePage() {
       )}
 
       {/* 游戏设置 */}
-      {defaultGameFolderPath && (
+      {effectiveGamePath && (
         <GameSettingsCard 
-          gameFolderPath={defaultGameFolderPath}
+          gameFolderPath={effectiveGamePath}
           hasGameExe={hasGameExe}
         />
       )}

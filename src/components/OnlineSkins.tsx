@@ -34,7 +34,8 @@ interface OnlineSkinsProps {
 }
 
 export function OnlineSkins({ onRefresh }: OnlineSkinsProps) {
-  const { defaultGameFolderPath } = usePathContext();
+  const { gameFolderPath, defaultGameFolderPath } = usePathContext();
+  const effectiveGamePath = gameFolderPath || defaultGameFolderPath;
   const [search, setSearch] = useState('');
   const [skins, setSkins] = useState<GithubSkin[]>([]);
   const [filteredSkins, setFilteredSkins] = useState<GithubSkin[]>([]);
@@ -97,11 +98,11 @@ export function OnlineSkins({ onRefresh }: OnlineSkinsProps) {
   };
 
   const downloadSkin = async () => {
-    if (!selectedSkin || !defaultGameFolderPath) return;
+    if (!selectedSkin || !effectiveGamePath) return;
 
     setDownloading(true);
     try {
-      const skinsPath = `${defaultGameFolderPath}\\Skins`;
+      const skinsPath = `${effectiveGamePath}\\Skins`;
 
       await invoke('download_skin_zip', {
         url: selectedSkin.download_url,

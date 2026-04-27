@@ -22,7 +22,8 @@ interface OnlineChartsProps {
 }
 
 export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
-  const { defaultGameFolderPath } = usePathContext();
+  const { gameFolderPath, defaultGameFolderPath } = usePathContext();
+  const effectiveGamePath = gameFolderPath || defaultGameFolderPath;
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortType, setSortType] = useState(0);
@@ -51,7 +52,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
 
   useEffect(() => {
     loadCategories();
-  }, [defaultGameFolderPath]);
+  }, [effectiveGamePath]);
 
   // 监听下载进度事件
   useEffect(() => {
@@ -87,10 +88,10 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
   }, [debouncedSearch, sortType, page]);
 
   const loadCategories = async () => {
-    if (!defaultGameFolderPath) return;
+    if (!effectiveGamePath) return;
 
     try {
-      const maichartsPath = `${defaultGameFolderPath}\\MaiCharts`;
+      const maichartsPath = `${effectiveGamePath}\\MaiCharts`;
       const cats = await invoke<string[]>('list_chart_categories', { maichartsDir: maichartsPath });
       setCategories(cats);
       if (cats.length > 0) {
@@ -110,7 +111,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
         page,
         proxy: null,
       });
-      
+
       if (Array.isArray(charts)) {
         setCharts(charts);
         if (charts.length < ITEMS_PER_PAGE) {
@@ -216,7 +217,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
   };
 
   const downloadChart = async () => {
-    if (!defaultGameFolderPath) return;
+    if (!effectiveGamePath) return;
 
     // 确定目标分类
     const finalCategory = targetCategory || newCategoryName.trim();
@@ -231,7 +232,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
 
     setDownloading(true);
     try {
-      const maichartsPath = `${defaultGameFolderPath}\\MaiCharts`;
+      const maichartsPath = `${effectiveGamePath}\\MaiCharts`;
 
       // 如果是新分类，先创建
       if (newCategoryName && !categories.includes(finalCategory)) {
@@ -477,7 +478,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
               </ScrollArea>
             </>
           )}
-          
+
           {downloading && downloadProgress.total > 0 && (
             <div>
               <Text size="sm" mb="xs">
@@ -489,7 +490,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
               />
             </div>
           )}
-          
+
           <Select
             label="选择已有分类"
             placeholder="选择分类"
@@ -502,9 +503,9 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
             searchable
             clearable
           />
-          
+
           <Divider label="或" labelPosition="center" />
-          
+
           <TextInput
             label="创建新分类"
             placeholder="输入新分类名称"
@@ -515,7 +516,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
             }}
             leftSection={<IconPlus size={16} />}
           />
-          
+
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={() => setDownloadModalOpen(false)}>
               取消

@@ -7,10 +7,10 @@ import { getVersion } from '@tauri-apps/api/app';
 import { usePathContext, useUpdateContext } from '../contexts';
 
 export function SettingPage() {
-  const { appExeFolderPath, defaultGameFolderPath } = usePathContext();
+  const { appExeFolderPath, gameFolderPath, setGameFolderPath } = usePathContext();
   const { isChecking, updateAvailable, updateInfo, isInstalling, checkForUpdates, installUpdate } = useUpdateContext();
 
-  if (!appExeFolderPath || !defaultGameFolderPath) {
+  if (!appExeFolderPath || !gameFolderPath) {
     return (
       <Container size="xl" py="xl">
         <Text c="red">无法获取应用程序路径，设置页面无法使用。</Text>
@@ -18,16 +18,11 @@ export function SettingPage() {
     );
   }
 
-  const [gamePath, setGamePath] = useState<string>(defaultGameFolderPath);
   const [httpProxy, setHttpProxy] = useState<string>('');
   const [downloadSource, setDownloadSource] = useState<string>('cnb');
   const [currentVersion, setCurrentVersion] = useState<string>('');
 
   useEffect(() => {
-    const savedPath = localStorage.getItem('gamePath');
-    if (savedPath) {
-      setGamePath(savedPath);
-    }
     const savedProxy = localStorage.getItem('httpProxy');
     if (savedProxy) {
       setHttpProxy(savedProxy);
@@ -54,7 +49,7 @@ export function SettingPage() {
       });
       
       if (selected && typeof selected === 'string') {
-        setGamePath(selected);
+        setGameFolderPath(selected);
       }
     } catch (error) {
       notifications.show({
@@ -66,7 +61,6 @@ export function SettingPage() {
   };
 
   const handleSave = () => {
-    localStorage.setItem('gamePath', gamePath);
     localStorage.setItem('httpProxy', httpProxy);
     localStorage.setItem('downloadSource', downloadSource);
     notifications.show({
@@ -150,8 +144,8 @@ export function SettingPage() {
               </ActionIcon>
             }
             placeholder="./game"
-            value={gamePath}
-            onChange={(event) => setGamePath(event.currentTarget.value)}
+            value={gameFolderPath ?? ''}
+            onChange={(event) => setGameFolderPath(event.currentTarget.value)}
             size="md"
             label="游戏目录路径"
             description="点击右侧图标选择游戏资源所在的文件夹路径"

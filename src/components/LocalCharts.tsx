@@ -46,7 +46,8 @@ interface LocalChartsProps {
 }
 
 export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
-  const { defaultGameFolderPath } = usePathContext();
+  const { gameFolderPath, defaultGameFolderPath } = usePathContext();
+  const effectiveGamePath = gameFolderPath || defaultGameFolderPath;
   const [categories, setCategories] = useState<string[]>([]);
   const [chartsByCategory, setChartsByCategory] = useState<Record<string, ChartInfo[]>>({});
   const [loading, setLoading] = useState(true);
@@ -57,7 +58,7 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
 
   useEffect(() => {
     loadCharts();
-  }, [defaultGameFolderPath]);
+  }, [effectiveGamePath]);
 
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
@@ -66,15 +67,15 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
   }, [refreshTrigger]);
 
   const loadCharts = async () => {
-    if (!defaultGameFolderPath) {
+    if (!effectiveGamePath) {
       setLoading(false);
       return;
     }
 
     try {
       setLoading(true);
-      const maichartsPath = `${defaultGameFolderPath}\\MaiCharts`;
-      
+      const maichartsPath = `${effectiveGamePath}\\MaiCharts`;
+
       // 加载所有分类
       const cats = await invoke<string[]>('list_chart_categories', { maichartsDir: maichartsPath });
       setCategories(cats);
@@ -82,9 +83,9 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
       // 加载每个分类的谱面
       const chartData: Record<string, ChartInfo[]> = {};
       for (const category of cats) {
-        const charts = await invoke<ChartInfo[]>('list_charts_in_category', { 
+        const charts = await invoke<ChartInfo[]>('list_charts_in_category', {
           maichartsDir: maichartsPath,
-          category 
+          category
         });
         chartData[category] = charts;
       }
@@ -102,7 +103,7 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
   };
 
   const handleDeleteChart = async (chart: ChartInfo) => {
-    if (!defaultGameFolderPath) return;
+    if (!effectiveGamePath) return;
 
     const confirmed = await ask(`确定要删除谱面 "${chart.name}" 吗？此操作不可恢复！`, {
       title: '确认删除',
@@ -111,7 +112,7 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
     if (!confirmed) return;
 
     try {
-      const maichartsPath = `${defaultGameFolderPath}\\MaiCharts`;
+      const maichartsPath = `${effectiveGamePath}\\MaiCharts`;
       await invoke('delete_chart', {
         maichartsDir: maichartsPath,
         category: chart.category,
@@ -140,7 +141,7 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
   };
 
   const handleMoveChart = async () => {
-    if (!defaultGameFolderPath || !chartToMove) return;
+    if (!effectiveGamePath || !chartToMove) return;
 
     // 确定目标分类
     const finalCategory = targetCategory || newCategoryName.trim();
@@ -154,7 +155,7 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
     }
 
     try {
-      const maichartsPath = `${defaultGameFolderPath}\\MaiCharts`;
+      const maichartsPath = `${effectiveGamePath}\\MaiCharts`;
 
       // 如果是新分类，先创建
       if (newCategoryName && !categories.includes(finalCategory)) {
@@ -247,8 +248,8 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
                 <Accordion.Panel>
                   <Grid gutter="sm">
                     {chartsByCategory[category]?.map(chart => {
-                      const chartPath = `${defaultGameFolderPath}\\MaiCharts\\${category}\\${chart.name}`;
-                      
+                      const chartPath = `${effectiveGamePath}\\MaiCharts\\${category}\\${chart.name}`;
+
                       return (
                         <Grid.Col key={chart.name} span={{ base: 12, sm: 6, md: 3, lg: 2.4 }}>
                           <Card shadow="sm" padding="sm" radius="md" withBorder>
@@ -310,7 +311,7 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
           <Text size="sm">
             将谱面 <Text span fw={600}>{chartToMove?.name}</Text> 从 <Text span c="blue">{chartToMove?.category}</Text> 移动到：
           </Text>
-          
+
           <Select
             label="选择已有分类"
             placeholder="选择分类"
@@ -323,9 +324,9 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
             searchable
             clearable
           />
-          
+
           <Divider label="或" labelPosition="center" />
-          
+
           <TextInput
             label="创建新分类"
             placeholder="输入新分类名称"
@@ -336,7 +337,7 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
             }}
             leftSection={<IconPlus size={16} />}
           />
-          
+
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={() => setMoveModalOpen(false)}>
               取消

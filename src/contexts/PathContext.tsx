@@ -9,6 +9,8 @@ interface PathContextType {
   appLocalDataPath: string | null;
   appCachePath: string | null;
   defaultGameFolderPath: string | null;
+  gameFolderPath: string | null;
+  setGameFolderPath: (path: string) => void;
   resourcePath: string | null;
   isLoading: boolean;
   error: string | null;
@@ -36,8 +38,14 @@ export const PathProvider: React.FC<PathProviderProps> = ({ children }) => {
   const [appCachePath, setAppCachePath] = useState<string | null>(null);
   const [resourcePath, setResourcePath] = useState<string | null>(null);
   const [defaultGameFolderPath, setDefaultGameFolderPath] = useState<string | null>(null);
+  const [gameFolderPath, setGameFolderPathState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const setGameFolderPath = (path: string) => {
+    localStorage.setItem('gamePath', path);
+    setGameFolderPathState(path);
+  };
 
   useEffect(() => {
     const loadPaths = async () => {
@@ -68,13 +76,21 @@ export const PathProvider: React.FC<PathProviderProps> = ({ children }) => {
           const exeFolderPath = await invoke<string>('get_app_exe_folder_path');
           setAppExePath(exePath);
           setAppExeFolderPath(exeFolderPath);
-          setDefaultGameFolderPath(await join(exeFolderPath, 'game'));
+          const defaultPath = await join(exeFolderPath, 'game');
+          setDefaultGameFolderPath(defaultPath);
+          // 优先使用用户自定义路径
+          const savedPath = localStorage.getItem('gamePath');
+          setGameFolderPathState(savedPath || defaultPath);
         } catch (err) {
           console.warn('无法获取exe路径:', err);
           // 如果未实现该命令，使用resource目录作为备选
           setAppExePath(resource);
           setAppExeFolderPath(resource);
-          setDefaultGameFolderPath(await join(resource, 'game'));
+          const defaultPath = await join(resource, 'game');
+          setDefaultGameFolderPath(defaultPath);
+          // 优先使用用户自定义路径
+          const savedPath = localStorage.getItem('gamePath');
+          setGameFolderPathState(savedPath || defaultPath);
         }
 
         setError(null);
@@ -97,6 +113,8 @@ export const PathProvider: React.FC<PathProviderProps> = ({ children }) => {
     appCachePath,
     resourcePath,
     defaultGameFolderPath,
+    gameFolderPath,
+    setGameFolderPath,
     isLoading,
     error,
   };

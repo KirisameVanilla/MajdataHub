@@ -16,13 +16,14 @@ interface LocalSkinsProps {
 }
 
 export function LocalSkins({ onRefresh, refreshTrigger }: LocalSkinsProps) {
-  const { defaultGameFolderPath } = usePathContext();
+  const { gameFolderPath, defaultGameFolderPath } = usePathContext();
+  const effectiveGamePath = gameFolderPath || defaultGameFolderPath;
   const [skins, setSkins] = useState<SkinInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadSkins();
-  }, [defaultGameFolderPath]);
+  }, [effectiveGamePath]);
 
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
@@ -31,14 +32,14 @@ export function LocalSkins({ onRefresh, refreshTrigger }: LocalSkinsProps) {
   }, [refreshTrigger]);
 
   const loadSkins = async () => {
-    if (!defaultGameFolderPath) {
+    if (!effectiveGamePath) {
       setLoading(false);
       return;
     }
 
     try {
       setLoading(true);
-      const skinsPath = `${defaultGameFolderPath}\\Skins`;
+      const skinsPath = `${effectiveGamePath}\\Skins`;
       
       const skinList = await invoke<SkinInfo[]>('list_skins', { skinsDir: skinsPath });
       setSkins(skinList);
@@ -55,7 +56,7 @@ export function LocalSkins({ onRefresh, refreshTrigger }: LocalSkinsProps) {
   };
 
   const handleDeleteSkin = async (skin: SkinInfo) => {
-    if (!defaultGameFolderPath) return;
+    if (!effectiveGamePath) return;
 
     const confirmed = await ask(`确定要删除皮肤 "${skin.name}" 吗？此操作不可恢复！`, {
       title: '确认删除',
@@ -64,7 +65,7 @@ export function LocalSkins({ onRefresh, refreshTrigger }: LocalSkinsProps) {
     if (!confirmed) return;
 
     try {
-      const skinsPath = `${defaultGameFolderPath}\\Skins`;
+      const skinsPath = `${effectiveGamePath}\\Skins`;
       await invoke('delete_skin', {
         skinsDir: skinsPath,
         skinName: skin.name,

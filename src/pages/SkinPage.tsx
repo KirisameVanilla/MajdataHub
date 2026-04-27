@@ -9,7 +9,8 @@ import { OnlineSkins } from '../components/OnlineSkins';
 import { useNavigate } from 'react-router-dom';
 
 export function SkinPage() {
-  const { defaultGameFolderPath } = usePathContext();
+  const { gameFolderPath, defaultGameFolderPath } = usePathContext();
+  const effectiveGamePath = gameFolderPath || defaultGameFolderPath;
   const [hasGameExe, setHasGameExe] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
   const [activeTab, setActiveTab] = useState<string | null>('local');
@@ -18,7 +19,7 @@ export function SkinPage() {
 
   useEffect(() => {
     checkGameExe();
-  }, [defaultGameFolderPath]);
+  }, [effectiveGamePath]);
 
   useEffect(() => {
     if (activeTab === 'local') {
@@ -27,13 +28,13 @@ export function SkinPage() {
   }, [activeTab]);
 
   const checkGameExe = async () => {
-    if (!defaultGameFolderPath) {
+    if (!effectiveGamePath) {
       setIsChecking(false);
       return;
     }
 
     try {
-      const gameFilePath = await join(defaultGameFolderPath, 'MajdataPlay.exe');
+      const gameFilePath = await join(effectiveGamePath, 'MajdataPlay.exe');
       const fileExists = await invoke<boolean>('file_exists', { path: gameFilePath });
       setHasGameExe(fileExists);
     } catch (error) {
