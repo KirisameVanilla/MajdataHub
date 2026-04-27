@@ -231,12 +231,16 @@ pub fn apply_update() -> Result<(), String> {
     let script_content = format!(
         r#"@echo off
 cd /d "%~dp0"
+timeout /t 2
 taskkill /f /im majdata-hub.exe
-timeout /t 1
+timeout /t 2
 copy /Y "%~dp0majdata-hub.new.exe" "%~dp0majdata-hub.exe"
-timeout /t 1
+timeout /t 2
 del "%~dp0majdata-hub.new.exe"
+timeout /t 2
 start majdata-hub.exe
+echo DONE
+pause
 "#,
     );
 
