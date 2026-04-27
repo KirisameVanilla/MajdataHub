@@ -65,11 +65,6 @@ pub fn create_router() -> Router {
         // SSE 进度
         .route("/api/sse/file-progress", get(sse_file_progress))
         .route("/api/sse/batch-progress", get(sse_batch_progress))
-        // 更新
-        .route("/api/update/check", post(check_for_update))
-        .route("/api/update/download", post(start_update_download))
-        .route("/api/update/apply", post(apply_update))
-        .route("/api/sse/update-progress", get(sse_update_progress))
         // 文件服务
         .route("/api/files/serve", get(serve_file))
         // SPA fallback 和静态文件 (使用 {*path} 语法捕获所有剩余路径)
@@ -500,58 +495,6 @@ async fn sse_file_progress() -> impl IntoResponse {
 
 async fn sse_batch_progress() -> impl IntoResponse {
     let rx = crate::sse::get_batch_progress_tx().subscribe();
-    let stream = BroadcastStream::new(rx).map(|msg| {
-        let data = match msg {
-            Ok(progress) => serde_json::to_string(&progress).unwrap_or_default(),
-            Err(_) => String::new(),
-        };
-        Ok::<_, Infallible>(format!("data: {}\n\n", data))
-    });
-
-    Response::builder()
-        .header("Content-Type", "text/event-stream")
-        .header("Cache-Control", "no-cache")
-        .header("Connection", "keep-alive")
-        .body(Body::from_stream(stream))
-        .unwrap()
-}
-
-// ============ 更新 ============
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdateCheckParam {
-    proxy: Option<String>,
-}
-
-async fn check_for_update(
-    Json(param): Json<UpdateCheckParam>,
-) -> Result<Json<commands::UpdateInfo>, AppError> {
-    Ok(Json(commands::check_for_update(param.proxy).await?))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdateDownloadParam {
-    download_url: String,
-    proxy: Option<String>,
-}
-
-async fn start_update_download(
-    Json(param): Json<UpdateDownloadParam>,
-) -> Result<Json<String>, AppError> {
-    Ok(Json(
-        commands::download_update(param.download_url, param.proxy).await?,
-    ))
-}
-
-async fn apply_update() -> Result<Json<()>, AppError> {
-    commands::apply_update()?;
-    Ok(Json(()))
-}
-
-async fn sse_update_progress() -> impl IntoResponse {
-    let rx = crate::sse::get_update_progress_tx().subscribe();
     let stream = BroadcastStream::new(rx).map(|msg| {
         let data = match msg {
             Ok(progress) => serde_json::to_string(&progress).unwrap_or_default(),

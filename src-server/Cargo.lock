@@ -1227,7 +1227,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "majdata-hub"
-version = "0.5.3"
+version = "0.5.2"
 dependencies = [
  "axum",
  "axum-extra",
@@ -1239,7 +1239,6 @@ dependencies = [
  "reqwest",
  "rfd",
  "rust-embed",
- "semver",
  "serde",
  "serde_json",
  "sha2",
@@ -1925,12 +1924,6 @@ dependencies = [
  "core-foundation-sys",
  "libc",
 ]
-
-[[package]]
-name = "semver"
-version = "1.0.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
 name = "serde"

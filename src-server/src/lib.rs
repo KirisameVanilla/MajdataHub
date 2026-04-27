@@ -85,9 +85,6 @@ pub fn run() {
 
     tracing::info!("启动 Majdata Hub 服务器");
 
-    // 清理上次更新残留文件
-    let _ = commands::cleanup_update_files();
-
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
