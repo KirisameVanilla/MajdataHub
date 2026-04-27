@@ -31,7 +31,6 @@ pub fn create_router() -> Router {
         .route("/api/fs/read", get(read_file_content))
         .route("/api/fs/write", post(write_file_content))
         .route("/api/fs/pick-folder", post(pick_folder))
-        .route("/api/fs/pick-files", post(pick_files))
         // 游戏
         .route("/api/game/launch-options", get(get_launch_options))
         .route("/api/game/launch", post(launch_game))
@@ -41,7 +40,6 @@ pub fn create_router() -> Router {
         .route("/api/charts/category", post(create_chart_category))
         .route("/api/charts/chart", delete(delete_chart))
         .route("/api/charts/move", post(move_chart))
-        .route("/api/charts/import-zips", post(import_chart_zips))
         // 皮肤
         .route("/api/skins/list", get(list_skins))
         .route("/api/skins/skin", delete(delete_skin))
@@ -148,11 +146,6 @@ async fn pick_folder() -> Result<Json<String>, AppError> {
     Ok(Json(path))
 }
 
-async fn pick_files() -> Result<Json<Vec<String>>, AppError> {
-    let paths = commands::pick_files()?;
-    Ok(Json(paths))
-}
-
 // ============ 游戏 ============
 
 async fn get_launch_options() -> Json<Vec<commands::file_system::LaunchOption>> {
@@ -245,24 +238,6 @@ async fn move_chart(Json(param): Json<MoveChartParam>) -> Result<Json<()>, AppEr
         param.chart_name,
     )?;
     Ok(Json(()))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ImportZipsParam {
-    zip_paths: Vec<String>,
-    maicharts_dir: String,
-    category: String,
-}
-
-async fn import_chart_zips(
-    Json(param): Json<ImportZipsParam>,
-) -> Result<Json<Vec<commands::ImportResult>>, AppError> {
-    Ok(Json(commands::import_chart_zips(
-        param.zip_paths,
-        param.maicharts_dir,
-        param.category,
-    )?))
 }
 
 // ============ 皮肤 ============

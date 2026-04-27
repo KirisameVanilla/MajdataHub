@@ -8,9 +8,9 @@ pub mod zip;
 pub use checksum::{calculate_checksums, save_checksums_to_file};
 pub use file_system::{
     create_chart_category, create_directory, delete_chart, delete_skin, execute_bat_file,
-    file_exists, get_app_paths, get_launch_options, import_chart_zips, launch_game, list_bat_files,
-    list_chart_categories, list_charts_in_category, list_skins, move_chart, pick_files, pick_folder,
-    read_file_content, write_file_content, ImportResult,
+    file_exists, get_app_paths, get_launch_options, launch_game, list_bat_files,
+    list_chart_categories, list_charts_in_category, list_skins, move_chart, pick_folder,
+    read_file_content, write_file_content,
 };
 pub use network::{
     clear_api_cache, download_charts_batch, download_file_to_path, download_skin_zip,
