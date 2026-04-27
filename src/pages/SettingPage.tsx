@@ -6,7 +6,7 @@ import { usePathContext } from '../contexts';
 import { api } from '../api/client';
 
 export function SettingPage() {
-  const { defaultGameFolderPath, setGameFolderPath } = usePathContext();
+  const { defaultGameFolderPath } = usePathContext();
 
   const [gamePath, setGamePath] = useState<string>(defaultGameFolderPath ?? '');
   const [httpProxy, setHttpProxy] = useState<string>('');
@@ -15,12 +15,16 @@ export function SettingPage() {
   const [isPickingFolder, setIsPickingFolder] = useState(false);
 
   useEffect(() => {
+    const savedPath = localStorage.getItem('gamePath');
+    if (savedPath) {
+      setGamePath(savedPath);
+    }
     const savedProxy = localStorage.getItem('httpProxy');
-    if (savedProxy !== null) {
+    if (savedProxy) {
       setHttpProxy(savedProxy);
     }
     const savedSource = localStorage.getItem('downloadSource');
-    if (savedSource !== null) {
+    if (savedSource) {
       setDownloadSource(savedSource);
     }
 
@@ -32,7 +36,7 @@ export function SettingPage() {
   }, []);
 
   const handleSave = () => {
-    setGameFolderPath(gamePath);
+    localStorage.setItem('gamePath', gamePath);
     localStorage.setItem('httpProxy', httpProxy);
     localStorage.setItem('downloadSource', downloadSource);
     notifications.show({

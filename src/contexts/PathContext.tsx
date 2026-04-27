@@ -2,11 +2,11 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { api } from '../api/client';
 
 interface AppPaths {
-  exe_path: string;
-  exe_folder_path: string;
-  game_folder_path: string;
-  maicharts_path: string;
-  skins_path: string;
+  exePath: string;
+  exeFolderPath: string;
+  gameFolderPath: string;
+  maichartsPath: string;
+  skinsPath: string;
 }
 
 interface PathContextType {
@@ -14,8 +14,6 @@ interface PathContextType {
   defaultGameFolderPath: string | null;
   maichartsPath: string | null;
   skinsPath: string | null;
-  setGameFolderPath: (path: string) => void;
-  reloadKey: number;
   isLoading: boolean;
   error: string | null;
 }
@@ -39,21 +37,8 @@ export const PathProvider: React.FC<PathProviderProps> = ({ children }) => {
   const [defaultGameFolderPath, setDefaultGameFolderPath] = useState<string | null>(null);
   const [maichartsPath, setMaichartsPath] = useState<string | null>(null);
   const [skinsPath, setSkinsPath] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const setGameFolderPath = (path: string) => {
-    localStorage.setItem('gamePath', path);
-    setDefaultGameFolderPath(prevPath => {
-      if (prevPath !== path) {
-        setReloadKey(prev => prev + 1);
-      }
-      return path;
-    });
-    setMaichartsPath(path ? `${path}\\MaiCharts` : null);
-    setSkinsPath(path ? `${path}\\Skins` : null);
-  };
 
   useEffect(() => {
     const loadPaths = async () => {
@@ -63,12 +48,12 @@ export const PathProvider: React.FC<PathProviderProps> = ({ children }) => {
         const savedGamePath = localStorage.getItem('gamePath');
         const paths = await api.get<AppPaths>('/api/paths');
 
-        const gamePath = savedGamePath || paths.game_folder_path;
+        const gamePath = savedGamePath || paths.gameFolderPath;
 
-        setAppExeFolderPath(paths.exe_folder_path);
-
-        setGameFolderPath(gamePath);
-        console.log('游戏路径已设置为:', gamePath);
+        setAppExeFolderPath(paths.exeFolderPath);
+        setDefaultGameFolderPath(gamePath);
+        setMaichartsPath(gamePath ? `${gamePath}\\MaiCharts` : null);
+        setSkinsPath(gamePath ? `${gamePath}\\Skins` : null);
 
         setError(null);
       } catch (err) {
@@ -88,8 +73,6 @@ export const PathProvider: React.FC<PathProviderProps> = ({ children }) => {
       defaultGameFolderPath,
       maichartsPath,
       skinsPath,
-      setGameFolderPath,
-      reloadKey,
       isLoading,
       error,
     }}>

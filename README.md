@@ -6,9 +6,9 @@
   <h3>🎵 Majdata Hub</h3>
   <p>一个用于管理 MajdataPlay 谱面和皮肤的桌面应用</p>
   
-  ![Version](https://img.shields.io/badge/version-0.5.2-blue.svg)
+  ![Version](https://img.shields.io/badge/version-0.5.1-blue.svg)
   ![License](https://img.shields.io/badge/license-MIT-green.svg)
-   ![Rust](https://img.shields.io/badge/Rust-Server-orange.svg)
+  ![Tauri](https://img.shields.io/badge/Tauri-2.0-orange.svg)
   ![React](https://img.shields.io/badge/React-19-61dafb.svg)
 </div>
 
@@ -53,7 +53,7 @@
 
 ### 后端
 
-- **框架**: Axum
+- **框架**: Tauri 2
 - **语言**: Rust
 - **主要功能**:
   - 文件系统操作
@@ -67,7 +67,7 @@
 
 - **Node.js**
 - **pnpm**
-- **Rust**（建议安装 stable toolchain）
+- **Rust** 环境配置请参照 [Tauri 官方文档](https://v2.tauri.app/zh-cn/start/prerequisites/#system-dependencies)
 
 ### 开发环境配置
 
@@ -98,7 +98,7 @@
 pnpm build
 ```
 
-构建产物将生成在 `src-server/target/release/` 目录下。
+构建产物将生成在 `src-tauri/target/release/bundle/` 目录下。
 
 ## 📂 项目结构
 
@@ -120,15 +120,16 @@ majdata-hub/
 │   ├── contexts/             # React Context
 │   ├── utils/                # 工具函数
 │   └── types/                # TypeScript 类型定义
-├── src-server/               # Rust 本地服务端代码
+├── src-tauri/                # Tauri 后端代码
 │   ├── src/
-│   │   ├── commands/         # 服务端命令处理
+│   │   ├── commands/         # Tauri 命令
 │   │   │   ├── file_system.rs   # 文件系统操作
 │   │   │   ├── network.rs       # 网络请求
 │   │   │   ├── zip.rs           # ZIP 操作
 │   │   │   └── checksum.rs      # 文件校验
 │   │   ├── models.rs         # 数据模型
 │   │   └── lib.rs            # 主入口
+│   └── tauri.conf.json       # Tauri 配置
 └── package.json              # 项目配置
 ```
 
@@ -177,7 +178,7 @@ majdata-hub/
 
 - [MajdataPlay](https://github.com/LingFeng-bbben/MajdataPlay) - Majdata 游玩软件
 - [Majdata.net](https://majdata.net) - 谱面资源网站
-- [Axum](https://github.com/tokio-rs/axum) - Rust Web 框架
+- [Tauri](https://tauri.app/) - 桌面应用框架
 - [React](https://react.dev/) - 前端框架
 - [Mantine](https://mantine.dev/) - React UI 组件库
 
