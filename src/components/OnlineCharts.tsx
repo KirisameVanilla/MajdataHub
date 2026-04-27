@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Container, TextInput, Select, Card, Group, Text, Button, Badge, Stack, Grid, Modal, LoadingOverlay, Pagination, Image, Divider, Loader, Checkbox, ScrollArea, Progress } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconDownload, IconSearch, IconPlus, IconCheckbox, IconSquare, IconRefresh } from '@tabler/icons-react';
-import { api } from '../api/client';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { usePathContext } from '../contexts';
 
 const API_ROOT = 'https://majdata.net/api3/api';
@@ -52,25 +53,21 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
     loadCategories();
   }, [defaultGameFolderPath]);
 
-  // 监听下载进度事件 (SSE)
+  // 监听下载进度事件
   useEffect(() => {
-    const eventSource = new EventSource('/api/sse/batch-progress');
+    let unlisten: (() => void) | undefined;
 
-    eventSource.onmessage = (event) => {
-      try {
-        const { current, total } = JSON.parse(event.data);
-        setDownloadProgress({ current, total });
-      } catch {
-        // ignore parse errors
-      }
-    };
-
-    eventSource.onerror = () => {
-      // EventSource will auto-reconnect
-    };
+    listen<{ current: number; total: number; chart_title: string }>('download-progress', (event) => {
+      setDownloadProgress({
+        current: event.payload.current,
+        total: event.payload.total,
+      });
+    }).then((unlistenFn) => {
+      unlisten = unlistenFn;
+    });
 
     return () => {
-      eventSource.close();
+      if (unlisten) unlisten();
     };
   }, []);
 
@@ -94,7 +91,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
 
     try {
       const maichartsPath = `${defaultGameFolderPath}\\MaiCharts`;
-      const cats = await api.get<string[]>(`/api/charts/categories?maichartsDir=${encodeURIComponent(maichartsPath)}`);
+      const cats = await invoke<string[]>('list_chart_categories', { maichartsDir: maichartsPath });
       setCategories(cats);
       if (cats.length > 0) {
         setTargetCategory(cats[0]);
@@ -107,7 +104,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
   const searchCharts = async () => {
     setLoading(true);
     try {
-      const charts = await api.post<ChartSummary[]>('/api/network/chart-list', {
+      const charts = await invoke<ChartSummary[]>('fetch_chart_list', {
         search: debouncedSearch,
         sortType,
         page,
@@ -190,7 +187,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
 
   const clearCacheAndRefresh = async () => {
     try {
-      await api.post('/api/network/clear-cache');
+      await invoke('clear_api_cache');
       notifications.show({
         title: '缓存已清除',
         message: '正在重新加载谱面列表…',
@@ -209,7 +206,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
 
   const downloadSingleChart = async (chart: ChartSummary, finalCategory: string, maichartsPath: string) => {
     // 调用Rust端批量下载命令（单个谱面）
-    await api.post('/api/network/download-charts-batch', {
+    await invoke('download_charts_batch', {
       chartIds: [chart.id],
       chartTitles: [chart.title],
       maichartsDir: maichartsPath,
@@ -238,7 +235,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
 
       // 如果是新分类，先创建
       if (newCategoryName && !categories.includes(finalCategory)) {
-        await api.post('/api/charts/category', {
+        await invoke('create_chart_category', {
           maichartsDir: maichartsPath,
           category: finalCategory,
         });
@@ -251,7 +248,7 @@ export function OnlineCharts({ onRefresh }: OnlineChartsProps) {
         setDownloadProgress({ current: 0, total: chartsToDownload.length });
 
         // 调用Rust端批量下载命令
-        await api.post('/api/network/download-charts-batch', {
+        await invoke('download_charts_batch', {
           chartIds: chartsToDownload.map(c => c.id),
           chartTitles: chartsToDownload.map(c => c.title),
           maichartsDir: maichartsPath,

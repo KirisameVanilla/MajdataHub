@@ -11,6 +11,7 @@ fn get_file_checksum_sync(file_path: &Path) -> Result<String, String> {
     let mut file = fs::File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
 
     let mut hasher = Sha256::new();
+    // 使用更大的缓冲区提高性能
     let mut buffer = vec![0u8; 65536]; // 64KB
     let mut total_bytes = 0u64;
 
@@ -49,6 +50,7 @@ fn collect_files(
     let files: Vec<PathBuf> = WalkDir::new(directory)
         .into_iter()
         .filter_entry(|e| {
+            // 如果是根目录下的文件/文件夹，检查是否在排除列表中
             if let Some(parent) = e.path().parent() {
                 if parent == root_dir {
                     let name = e.file_name().to_string_lossy().to_string();
@@ -66,7 +68,8 @@ fn collect_files(
     Ok(files)
 }
 
-/// 计算目录下所有文件的校验和（并行优化版本）
+/// Tauri命令：计算目录下所有文件的校验和（并行优化版本）
+#[tauri::command]
 pub async fn calculate_checksums(
     directory: String,
     exclude_files: Vec<String>,
@@ -87,13 +90,16 @@ pub async fn calculate_checksums(
         return Err(format!("Path is not a directory: {}", directory));
     }
 
+    // 在独立线程中执行 CPU 密集型操作，避免阻塞 tokio 运行时
     let dir_path_owned = dir_path.to_path_buf();
     let result = tokio::task::spawn_blocking(move || {
+        // 先收集所有文件路径
         let files = collect_files(&dir_path_owned, &dir_path_owned, &exclude_files)?;
 
         let collection_time = start_time.elapsed();
         tracing::debug!("文件收集完成，耗时: {:.2}秒", collection_time.as_secs_f64());
 
+        // 使用 rayon 并行计算所有文件的校验和
         tracing::info!("开始并行计算校验和...");
         let results: Result<Vec<FileChecksum>, String> = files
             .par_iter()
@@ -136,7 +142,8 @@ pub async fn calculate_checksums(
     Ok(result)
 }
 
-/// 保存校验和结果到文件
+/// Tauri命令：保存校验和结果到文件
+#[tauri::command]
 pub async fn save_checksums_to_file(
     directory: String,
     output_file: String,

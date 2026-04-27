@@ -2,7 +2,8 @@ use crate::commands::network::download_file_impl;
 use std::path::Path;
 use tokio::fs;
 
-/// 解压ZIP文件
+/// Tauri命令：解压ZIP文件
+#[tauri::command]
 pub fn extract_zip(zip_path: String, target_dir: String) -> Result<String, String> {
     tracing::info!("开始解压 ZIP 文件: {} -> {}", zip_path, target_dir);
     let start_time = std::time::Instant::now();
@@ -20,7 +21,7 @@ pub fn extract_zip(zip_path: String, target_dir: String) -> Result<String, Strin
     let total_files = archive.len();
     tracing::debug!("ZIP 文件包含 {} 个条目", total_files);
 
-    // 获取 zip 文件的根目录名称
+    // 获取 zip 文件的根目录名称（通常是 MajdataPlay_Build-master）
     let root_folder = if archive.len() > 0 {
         let first_file = archive
             .by_index(0)
@@ -42,6 +43,7 @@ pub fn extract_zip(zip_path: String, target_dir: String) -> Result<String, Strin
 
         let mut outpath = Path::new(&target_dir).to_path_buf();
 
+        // 去掉根文件夹，直接解压到目标目录
         let file_path = file.name();
         if let Some(stripped) = file_path.strip_prefix(&format!("{}/", root_folder)) {
             outpath.push(stripped);
@@ -76,8 +78,10 @@ pub fn extract_zip(zip_path: String, target_dir: String) -> Result<String, Strin
     Ok(format!("Extracted {} files to {}", total_files, target_dir))
 }
 
-/// 下载并解压文件
+/// Tauri命令：下载并解压文件
+#[tauri::command]
 pub async fn download_and_extract(
+    app: tauri::AppHandle,
     url: String,
     target_path: String,
     zip_path: String,
@@ -92,8 +96,8 @@ pub async fn download_and_extract(
         format!("Failed to create target directory: {}", e)
     })?;
 
-    // 下载文件（启用进度事件）
-    download_file_impl(url, zip_path.clone(), proxy, true).await?;
+    // 下载文件（传入 AppHandle 以便发送进度事件）
+    download_file_impl(url, zip_path.clone(), proxy, Some(&app)).await?;
 
     // 解压文件
     tracing::info!("开始解压 ZIP 文件...");

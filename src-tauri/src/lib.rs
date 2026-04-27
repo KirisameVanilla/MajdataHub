@@ -1,10 +1,9 @@
 // 模块声明
 mod commands;
-mod error;
 mod models;
-mod routes;
-mod sse;
 
+// 导入所有命令
+use commands::*;
 use std::fs::OpenOptions;
 use std::io::Write;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -35,6 +34,7 @@ impl Write for FileWriter {
 
 /// 初始化日志系统
 fn init_logging() {
+    // 获取可执行文件所在目录
     let exe_path = std::env::current_exe().ok();
     let log_dir = exe_path
         .as_ref()
@@ -43,6 +43,7 @@ fn init_logging() {
 
     let log_file_path = log_dir.join("MajdataHub.log");
 
+    // 创建或覆盖日志文件
     let log_file = OpenOptions::new()
         .create(true)
         .write(true)
@@ -52,59 +53,87 @@ fn init_logging() {
 
     let file_writer = FileWriter::new(log_file);
 
+    // 创建日志过滤器，默认 info 级别，可通过 RUST_LOG 环境变量覆盖
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     tracing_subscriber::registry()
         .with(filter)
         .with(
+            // 输出到文件
             fmt::layer()
                 .with_writer(move || file_writer.clone())
-                .with_target(true)
-                .with_thread_ids(false)
-                .with_file(true)
-                .with_line_number(true)
-                .with_ansi(false),
+                .with_target(true) // 显示日志来源
+                .with_thread_ids(false) // 不显示线程ID
+                .with_file(true) // 显示文件名
+                .with_line_number(true) // 显示行号
+                .with_ansi(false), // 禁用颜色代码（文件不需要颜色）
         )
         .with(
+            // 输出到终端
             fmt::layer()
                 .with_writer(std::io::stdout)
-                .with_target(true)
-                .with_thread_ids(false)
-                .with_file(true)
-                .with_line_number(true)
-                .with_ansi(true),
+                .with_target(true) // 显示日志来源
+                .with_thread_ids(false) // 不显示线程ID
+                .with_file(true) // 显示文件名
+                .with_line_number(true) // 显示行号
+                .with_ansi(true), // 终端启用颜色代码
         )
         .init();
 
     tracing::info!("日志系统已初始化，日志文件: {:?}", log_file_path);
 }
 
-/// 应用程序入口
+/// Tauri 应用程序入口
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 初始化日志系统
     init_logging();
 
-    tracing::info!("启动 Majdata Hub 服务器");
+    tracing::info!("启动 Majdata Hub 应用程序");
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create Tokio runtime");
-
-    rt.block_on(async {
-        let app = routes::create_router();
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:1420")
-            .await
-            .expect("Failed to bind to 127.0.0.1:1420");
-
-        let addr = "http://127.0.0.1:1420";
-        tracing::info!("服务器运行于 {}", addr);
-
-        // 自动打开浏览器
-        let _ = open::that(addr);
-
-        axum::serve(listener, app)
-            .await
-            .expect("Failed to start server");
-    });
+    tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            // 文件系统相关命令
+            greet,
+            get_app_exe_path,
+            get_app_exe_folder_path,
+            file_exists,
+            list_bat_files,
+            execute_bat_file,
+            get_launch_options,
+            launch_game,
+            // 谱面管理相关命令
+            list_chart_categories,
+            list_charts_in_category,
+            delete_chart,
+            move_chart,
+            create_chart_category,
+            create_directory,
+            // 皮肤管理相关命令
+            list_skins,
+            delete_skin,
+            // 文件读写命令
+            read_file_content,
+            write_file_content,
+            // 校验和相关命令
+            calculate_checksums,
+            save_checksums_to_file,
+            // ZIP相关命令
+            extract_zip,
+            download_and_extract,
+            // 网络相关命令
+            download_file_to_path,
+            fetch_remote_hashes,
+            fetch_chart_list,
+            fetch_github_skins,
+            download_skin_zip,
+            download_charts_batch,
+            clear_api_cache
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

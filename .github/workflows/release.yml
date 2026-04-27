@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     paths:
-      - "package.json"
+      - "src-tauri/tauri.conf.json"
     branches:
       - main
   workflow_dispatch:
@@ -17,15 +17,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Extract version from package.json
-        id: version
-        shell: pwsh
-        run: |
-          $packageJson = Get-Content package.json | ConvertFrom-Json
-          $version = $packageJson.version
-          echo "version=$version" >> $env:GITHUB_OUTPUT
-          Write-Host "Version: $version"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
@@ -49,63 +40,97 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build frontend
-        run: pnpm vite:build
-
-      - name: Build Rust release
-        run: cargo build --manifest-path src-tauri/Cargo.toml --release
-
-      - name: Create and push tag
-        id: create_tag
+      - uses: tauri-apps/tauri-action@v0
+        id: tauri-build
         continue-on-error: true
-        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$VERSION" -m "Release v$VERSION" || true
-          git push origin "v$VERSION" 2>/dev/null || true
-
-      - name: Create Release
-        id: create_release
-        if: steps.create_tag.outcome == 'success'
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          release_name: Majdata Hub v${{ steps.version.outputs.version }}
-          draft: false
+          tagName: v__VERSION__
+          releaseName: Majdata Hub v__VERSION__
+          releaseDraft: false
           prerelease: false
+          args: "--config src-tauri/tauri.build.conf.json"
 
-      - name: Upload exe to Release
-        if: steps.create_release.outcome == 'success'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./src-tauri/target/release/majdata-hub.exe
-          asset_name: majdata-hub-v${{ steps.version.outputs.version }}.exe
-          asset_content_type: application/octet-stream
-
-      - name: Prepare artifacts for mirror
-        if: steps.create_release.outcome == 'success'
+      - name: Copy artifacts to temp folder
+        if: steps.tauri-build.outcome == 'success'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "temp"
-          Copy-Item -Path "src-tauri/target/release/majdata-hub.exe" -Destination "temp/majdata-hub-v${{ steps.version.outputs.version }}.exe" -Force
-          Write-Host "Prepared exe for mirror"
 
-      - name: Upload to CNB mirror
-        if: steps.create_release.outcome == 'success'
+          $artifactPaths = '${{ steps.tauri-build.outputs.artifactPaths }}' | ConvertFrom-Json
+
+          foreach ($path in $artifactPaths) {
+            if (Test-Path $path) {
+              $fileName = Split-Path $path -Leaf
+              $fileName = $fileName -replace ' ', '.'
+              Copy-Item -Path $path -Destination "temp/$fileName" -Force
+              Write-Host "Copied: $fileName"
+            } else {
+              Write-Warning "File not found: $path"
+            }
+          }
+
+          Write-Host "All artifacts copied to temp folder"
+
+      - name: Generate latest.json
+        if: steps.tauri-build.outcome == 'success'
+        shell: pwsh
+        env:
+          MIRROR_URL: ${{ vars.CNB_URL }}
+        run: |
+          $pubDate = (Get-Date).ToUniversalTime().ToString("o")
+
+          $platforms = @{}
+
+          $files = Get-ChildItem "temp" -File | Where-Object { $_.Extension -ne ".sig" }
+
+          foreach ($file in $files) {
+            $sigPath = Join-Path "temp" "$($file.Name).sig"
+            $signature = ""
+            
+            if (Test-Path $sigPath) {
+              $signature = Get-Content $sigPath -Raw
+            }
+            
+            $platformKey = ""
+            if ($file.Name -like "*x64_en-US*msi") {
+              $platformKey = "windows-x86_64-msi"
+            } elseif ($file.Name -like "*x64_en-US*") {
+              $platformKey = "windows-x86_64"
+            } elseif ($file.Name -like "*x64*setup*") {
+              $platformKey = "windows-x86_64-nsis"
+            } else {
+              continue
+            }
+            
+            $cnbUrl = "$($env:MIRROR_URL)/-/git/raw/main/$($file.Name)?download=true"
+            
+            $platforms[$platformKey] = @{
+              signature = $signature
+              url = $cnbUrl
+            }
+          }
+
+          $latestJson = @{
+            version = '${{ steps.tauri-build.outputs.appVersion }}'
+            notes = ""
+            pub_date = $pubDate
+            platforms = $platforms
+          } | ConvertTo-Json -Depth 10
+
+          # 写入latest.json到temp目录
+          Set-Content -Path "temp/latest.json" -Value $latestJson
+          Write-Host "Generated latest.json in temp folder"
+
+      - name: Commit files in temp folder
+        if: steps.tauri-build.outcome == 'success'
         shell: bash
         env:
           MIRROR_URL: ${{ vars.CNB_URL }}
           MIRROR_TOKEN: ${{ vars.CNB_TOKEN }}
-        continue-on-error: true
         run: |
           cd temp
           git init
@@ -113,7 +138,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Release v${{ steps.version.outputs.version }}"
+          git commit -m "hentai lolicon"
           AUTH_URL=$(echo "$MIRROR_URL" | sed -E "s#https://#https://x-access-token:${MIRROR_TOKEN}@#")
           git remote remove mirror 2>/dev/null || true
           git remote add mirror "$AUTH_URL"

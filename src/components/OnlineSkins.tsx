@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Container, TextInput, Card, Group, Text, Button, Stack, Grid, LoadingOverlay, Modal, Divider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconDownload, IconSearch, IconBrandGithub } from '@tabler/icons-react';
-import { api } from '../api/client';
+import { invoke } from '@tauri-apps/api/core';
 import { usePathContext } from '../contexts';
 
 const SKIN_SOURCES = {
@@ -67,7 +67,7 @@ export function OnlineSkins({ onRefresh }: OnlineSkinsProps) {
     setLoading(true);
     try {
       const { listUrl, baseUrl } = getSkinUrls();
-      const skinList = await api.post<GithubSkin[]>('/api/network/github-skins', {
+      const skinList = await invoke<GithubSkin[]>('fetch_github_skins', {
         url: listUrl,
         baseUrl,
         proxy: getProxy(),
@@ -103,7 +103,7 @@ export function OnlineSkins({ onRefresh }: OnlineSkinsProps) {
     try {
       const skinsPath = `${defaultGameFolderPath}\\Skins`;
 
-      await api.post('/api/network/download-skin', {
+      await invoke('download_skin_zip', {
         url: selectedSkin.download_url,
         skinName: selectedSkin.name,
         skinsDir: skinsPath,

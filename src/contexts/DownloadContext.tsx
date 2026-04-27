@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { FileChecksum } from '../utils/hash';
+import { listen } from '@tauri-apps/api/event';
 
 interface DownloadContextType {
   isDownloading: boolean;
@@ -38,6 +39,7 @@ export const DownloadProvider: React.FC<DownloadProviderProps> = ({ children }) 
   const [downloadSpeed, setDownloadSpeed] = useState(0);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateList, setUpdateList] = useState<FileChecksum[]>([]);
+  // 保存上一次的速度用于平滑显示
   const lastSpeedRef = useRef(0);
 
   const resetDownloadProgress = () => {
@@ -48,35 +50,33 @@ export const DownloadProvider: React.FC<DownloadProviderProps> = ({ children }) 
     lastSpeedRef.current = 0;
   };
 
-  // 全局监听下载进度事件（SSE）
+  // 全局监听下载进度事件，Context 生命周期内始终有效
   useEffect(() => {
-    const eventSource = new EventSource('/api/sse/file-progress');
+    let unlisten: (() => void) | null = null;
 
-    eventSource.onmessage = (event) => {
-      try {
-        const { downloaded, total, speed } = JSON.parse(event.data);
+    listen<{ downloaded: number; total: number | null; speed: number }>(
+      'download_file_progress',
+      (event) => {
+        const { downloaded, total, speed } = event.payload;
         setDownloadedBytes(downloaded);
         setTotalBytes(total ?? null);
         if (speed > 0) {
           lastSpeedRef.current = speed;
           setDownloadSpeed(speed);
         } else if (lastSpeedRef.current > 0) {
+          // 最后一次事件 speed=0，保留上次速度直到下载完成
           setDownloadSpeed(lastSpeedRef.current);
         }
         if (total && total > 0) {
           setDownloadProgress(Math.round((downloaded / total) * 100));
         }
-      } catch {
-        // ignore parse errors
       }
-    };
-
-    eventSource.onerror = () => {
-      // EventSource will auto-reconnect
-    };
+    ).then((fn) => {
+      unlisten = fn;
+    });
 
     return () => {
-      eventSource.close();
+      unlisten?.();
     };
   }, []);
 

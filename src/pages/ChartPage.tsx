@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Container, Title, Text, Tabs, Alert, Button } from '@mantine/core';
 import { IconAlertCircle, IconFolder, IconCloud, IconDownload } from '@tabler/icons-react';
-import { api } from '../api/client';
+import { invoke } from '@tauri-apps/api/core';
+import { join } from '@tauri-apps/api/path';
 import { usePathContext } from '../contexts';
 import { LocalCharts, OnlineCharts } from '../components';
 import { useNavigate } from 'react-router-dom';
@@ -31,8 +32,8 @@ export function ChartPage() {
     }
 
     try {
-      const gameFilePath = `${defaultGameFolderPath}\\MajdataPlay.exe`;
-      const fileExists = await api.get<boolean>(`/api/fs/exists?path=${encodeURIComponent(gameFilePath)}`);
+      const gameFilePath = await join(defaultGameFolderPath, 'MajdataPlay.exe');
+      const fileExists = await invoke<boolean>('file_exists', { path: gameFilePath });
       setHasGameExe(fileExists);
     } catch (error) {
       console.error('检查游戏文件出错:', error);

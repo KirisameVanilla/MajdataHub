@@ -1,11 +1,19 @@
 use crate::models::FileChecksum;
-use crate::sse::{DownloadBatchProgress, DownloadFileProgress};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
+use tauri::Emitter;
 use tokio::fs;
+
+/// 文件下载进度事件
+#[derive(Debug, Clone, Serialize)]
+pub struct DownloadFileProgress {
+    pub downloaded: u64,
+    pub total: Option<u64>,
+    pub speed: f64, // bytes/sec
+}
 
 /// API 响应缓存（URL → 响应体文本）
 static API_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
@@ -14,7 +22,8 @@ fn get_cache() -> &'static Mutex<HashMap<String, String>> {
     API_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// 清除所有 API 缓存
+/// Tauri命令：清除所有 API 缓存
+#[tauri::command]
 pub fn clear_api_cache() -> Result<(), String> {
     let mut cache = get_cache()
         .lock()
@@ -33,7 +42,7 @@ pub struct ChartSummary {
     pub artist: String,
     pub designer: String,
     pub uploader: String,
-    pub levels: Vec<Option<String>>,
+    pub levels: Vec<Option<String>>, // API 返回数组，可能包含 null、空字符串或 "13+", "14" 等
 }
 
 /// GitHub 文件信息
@@ -47,8 +56,8 @@ pub struct GithubSkin {
 /// 创建 HTTP 客户端，支持代理和重定向
 pub fn create_http_client(proxy: Option<String>) -> Result<reqwest::Client, String> {
     let mut client_builder = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .timeout(std::time::Duration::from_secs(300));
+        .redirect(reqwest::redirect::Policy::limited(10)) // 支持最多10次重定向
+        .timeout(std::time::Duration::from_secs(300)); // 5分钟超时
 
     if let Some(proxy_url) = proxy {
         if !proxy_url.is_empty() {
@@ -67,11 +76,13 @@ pub fn create_http_client(proxy: Option<String>) -> Result<reqwest::Client, Stri
 }
 
 /// 下载文件到指定路径（内部共享函数）
+/// 被 download_file_to_path 和 download_and_extract 复用
+/// app: 可选 AppHandle，提供时每 200ms 发送一次 download_file_progress 事件
 pub async fn download_file_impl(
     url: String,
     output_path: String,
     proxy: Option<String>,
-    emit_progress: bool,
+    app: Option<&tauri::AppHandle>,
 ) -> Result<String, String> {
     tracing::info!("下载文件: {} -> {}", url, output_path);
     let start_time = std::time::Instant::now();
@@ -112,34 +123,40 @@ pub async fn download_file_impl(
         downloaded += chunk.len() as u64;
         file_bytes.extend_from_slice(&chunk);
 
-        if emit_progress {
-            let now = std::time::Instant::now();
-            if now.duration_since(last_emit).as_millis() >= 200 {
-                let elapsed_secs = now.duration_since(last_emit).as_secs_f64();
-                let speed = if elapsed_secs > 0.0 {
-                    (downloaded - last_downloaded) as f64 / elapsed_secs
-                } else {
-                    0.0
-                };
-                last_downloaded = downloaded;
-                last_emit = now;
+        let now = std::time::Instant::now();
+        if now.duration_since(last_emit).as_millis() >= 200 {
+            let elapsed_secs = now.duration_since(last_emit).as_secs_f64();
+            let speed = if elapsed_secs > 0.0 {
+                (downloaded - last_downloaded) as f64 / elapsed_secs
+            } else {
+                0.0
+            };
+            last_downloaded = downloaded;
+            last_emit = now;
 
-                let _ = crate::sse::get_file_progress_tx().send(DownloadFileProgress {
-                    downloaded,
-                    total: total_size,
-                    speed,
-                });
+            if let Some(app) = app {
+                let _ = app.emit(
+                    "download_file_progress",
+                    DownloadFileProgress {
+                        downloaded,
+                        total: total_size,
+                        speed,
+                    },
+                );
             }
         }
     }
 
     // 发送最终完成事件
-    if emit_progress {
-        let _ = crate::sse::get_file_progress_tx().send(DownloadFileProgress {
-            downloaded,
-            total: total_size,
-            speed: 0.0,
-        });
+    if let Some(app) = app {
+        let _ = app.emit(
+            "download_file_progress",
+            DownloadFileProgress {
+                downloaded,
+                total: total_size,
+                speed: 0.0,
+            },
+        );
     }
 
     let file_size = file_bytes.len();
@@ -159,7 +176,9 @@ pub async fn download_file_impl(
     Ok(format!("Downloaded to {}", output_path))
 }
 
-/// 下载单个文件到指定位置
+/// Tauri命令：下载单个文件到指定位置
+/// 复用 download_file_impl，添加父目录创建逻辑
+#[tauri::command]
 pub async fn download_file_to_path(
     url: String,
     file_path: String,
@@ -176,11 +195,12 @@ pub async fn download_file_to_path(
         })?;
     }
 
-    // 下载（更新时不需要全局进度事件）
-    download_file_impl(url, full_path.to_string_lossy().to_string(), proxy, false).await
+    // 复用基础下载函数（更新时不需要全局进度事件）
+    download_file_impl(url, full_path.to_string_lossy().to_string(), proxy, None).await
 }
 
-/// 获取远程哈希文件
+/// Tauri命令：获取远程哈希文件
+#[tauri::command]
 pub async fn fetch_remote_hashes(
     url: String,
     proxy: Option<String>,
@@ -223,7 +243,8 @@ pub async fn fetch_remote_hashes(
     Ok(hashes)
 }
 
-/// 搜索谱面列表
+/// Tauri命令：搜索谱面列表
+#[tauri::command]
 pub async fn fetch_chart_list(
     search: String,
     sort_type: i32,
@@ -296,10 +317,7 @@ pub async fn fetch_chart_list(
     // 解析 JSON
     let charts: Vec<ChartSummary> = serde_json::from_str(&response_text).map_err(|e| {
         tracing::error!("❌ 解析 JSON 失败!");
-        tracing::error!(
-            "  错误: {}",
-            e
-        );
+        tracing::error!("  错误: {}", e);
         tracing::error!(
             "  响应体（前 1000 字符）: {}",
             if response_text.len() > 1000 {
@@ -330,7 +348,10 @@ pub async fn fetch_chart_list(
     Ok(charts)
 }
 
-/// 从文本文件获取皮肤列表
+/// Tauri命令：从文本文件获取皮肤列表
+/// url: skins.txt 的完整 URL（按下载源不同传入不同地址）
+/// base_url: 皮肤 ZIP 文件的下载基础 URL
+#[tauri::command]
 pub async fn fetch_github_skins(
     url: String,
     base_url: String,
@@ -382,7 +403,7 @@ pub async fn fetch_github_skins(
         format!("{}/", base_url)
     };
 
-    // 按行分割，格式为 "皮肤名称|-|字节数"
+    // 按行分割，格式为 "皮肤名称|-|字节数"，文件名需 URI encode（可能含空格等特殊字符）
     let skins: Vec<GithubSkin> = text
         .lines()
         .map(|line| line.trim())
@@ -412,7 +433,8 @@ pub async fn fetch_github_skins(
     Ok(skins)
 }
 
-/// 下载皮肤 ZIP 文件并解压
+/// Tauri命令：下载皮肤 ZIP 文件并解压
+#[tauri::command]
 pub async fn download_skin_zip(
     url: String,
     skin_name: String,
@@ -435,7 +457,7 @@ pub async fn download_skin_zip(
         url,
         temp_zip_path.to_string_lossy().to_string(),
         proxy,
-        false,
+        None,
     )
     .await?;
 
@@ -461,8 +483,18 @@ pub async fn download_skin_zip(
     Ok(extract_result)
 }
 
-/// 批量下载谱面
+/// 下载进度事件
+#[derive(Debug, Clone, Serialize)]
+struct DownloadProgress {
+    current: usize,
+    total: usize,
+    chart_title: String,
+}
+
+/// Tauri命令：批量下载谱面
+#[tauri::command]
 pub async fn download_charts_batch(
+    app: tauri::AppHandle,
     chart_ids: Vec<String>,
     chart_titles: Vec<String>,
     maicharts_dir: String,
@@ -487,11 +519,14 @@ pub async fn download_charts_batch(
         tracing::info!("下载谱面 {}/{}: {}", index + 1, total, chart_title);
 
         // 发送进度事件
-        let _ = crate::sse::get_batch_progress_tx().send(DownloadBatchProgress {
-            current: index,
-            total,
-            chart_title: chart_title.clone(),
-        });
+        let _ = app.emit(
+            "download-progress",
+            DownloadProgress {
+                current: index,
+                total,
+                chart_title: chart_title.clone(),
+            },
+        );
 
         // 创建谱面文件夹路径
         let chart_folder = Path::new(&maicharts_dir).join(&category).join(chart_title);
@@ -527,7 +562,7 @@ pub async fn download_charts_batch(
                 url,
                 file_path.to_string_lossy().to_string(),
                 proxy.clone(),
-                false,
+                None,
             )
             .await
             {
@@ -546,7 +581,7 @@ pub async fn download_charts_batch(
             video_url,
             video_path.to_string_lossy().to_string(),
             proxy.clone(),
-            false,
+            None,
         )
         .await
         {
@@ -560,11 +595,14 @@ pub async fn download_charts_batch(
     }
 
     // 发送完成事件
-    let _ = crate::sse::get_batch_progress_tx().send(DownloadBatchProgress {
-        current: total,
-        total,
-        chart_title: String::new(),
-    });
+    let _ = app.emit(
+        "download-progress",
+        DownloadProgress {
+            current: total,
+            total,
+            chart_title: String::new(),
+        },
+    );
 
     tracing::info!("批量下载完成: 成功 {}/{}", success_count, total);
     Ok(format!("成功下载 {}/{} 个谱面", success_count, total))
