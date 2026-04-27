@@ -62,6 +62,7 @@ pub async fn check_for_update(proxy: Option<String>) -> Result<UpdateInfo, Strin
         .unwrap_or(&release.tag_name)
         .to_string();
 
+    // env!("CARGO_PKG_VERSION")
     let current_version = env!("CARGO_PKG_VERSION").to_string();
 
     // 用 semver 比较版本
@@ -227,21 +228,40 @@ pub fn apply_update() -> Result<(), String> {
         return Err("更新文件不存在".to_string());
     }
 
+    let exe_name = exe_path
+        .file_name()
+        .ok_or("无法确定 exe 文件名")?
+        .to_string_lossy()
+        .to_string();
+
     // 使用 %~dp0 (bat 脚本自身所在目录) 引用文件路径，比硬编码绝对路径更可靠
     let script_content = format!(
         r#"@echo off
 cd /d "%~dp0"
+
+echo ==== BAT START ====
+
 timeout /t 2
-taskkill /f /im majdata-hub.exe
-timeout /t 2
-copy /Y "%~dp0majdata-hub.new.exe" "%~dp0majdata-hub.exe"
-timeout /t 2
+
+:waitloop
+echo TRY COPY
+copy /Y "%~dp0majdata-hub.new.exe" "%~dp0{exe_name}"
+
+if errorlevel 1 (
+    echo COPY FAILED: %errorlevel%
+    pause
+    timeout /t 1
+    goto waitloop
+)
+
+echo COPY SUCCESS
+
 del "%~dp0majdata-hub.new.exe"
-timeout /t 2
-start majdata-hub.exe
+start "" "%~dp0{exe_name}"
+
 echo DONE
-pause
 "#,
+        exe_name = exe_name,
     );
 
     let script_path = exe_dir.join("apply_update.bat");
@@ -255,14 +275,14 @@ pause
         use std::os::windows::process::CommandExt;
         const CREATE_NEW_CONSOLE: u32 = 0x00000010;
         std::process::Command::new("cmd.exe")
-            .args(["/C", script_path.to_str().unwrap()])
+            .args(["/C", "start", "", script_path.to_str().unwrap()])
             .creation_flags(CREATE_NEW_CONSOLE)
             .spawn()
             .map_err(|e| format!("启动更新脚本失败: {}", e))?;
     }
 
     tracing::info!("更新已应用，正在退出以完成替换...");
-    Ok(())
+    std::process::exit(0);
 }
 
 /// 清理上次更新残留文件
