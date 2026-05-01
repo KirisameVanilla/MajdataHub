@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Container, Card, Group, Text, Button, Badge, Stack, Select, Modal, ActionIcon, Grid, Accordion, LoadingOverlay, Image, TextInput, Divider } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconTrash, IconFolderSymlink, IconPlus } from '@tabler/icons-react';
+import { IconTrash, IconFolderSymlink, IconPlus, IconFolderPlus, IconUpload, IconCheck, IconX, IconAlertCircle } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ask } from '@tauri-apps/plugin-dialog';
@@ -14,6 +14,13 @@ interface ChartInfo {
   has_track: boolean;
   has_maidata: boolean;
   has_video: boolean;
+}
+
+interface ImportResult {
+  file_name: string;
+  status: string;
+  chart_name: string | null;
+  reason: string | null;
 }
 
 // 单独的图片组件，用于处理 jpg/png 回退
@@ -51,10 +58,25 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
   const [categories, setCategories] = useState<string[]>([]);
   const [chartsByCategory, setChartsByCategory] = useState<Record<string, ChartInfo[]>>({});
   const [loading, setLoading] = useState(true);
+
+  // 移动谱面
   const [moveModalOpen, setMoveModalOpen] = useState(false);
   const [chartToMove, setChartToMove] = useState<ChartInfo | null>(null);
   const [targetCategory, setTargetCategory] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
+
+  // 创建分类
+  const [createCategoryModalOpen, setCreateCategoryModalOpen] = useState(false);
+  const [createCategoryName, setCreateCategoryName] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  // 导入谱面
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [importCategory, setImportCategory] = useState<string | null>(null);
+  const [importNewCategory, setImportNewCategory] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importResults, setImportResults] = useState<ImportResult[] | null>(null);
 
   useEffect(() => {
     loadCharts();
@@ -102,6 +124,141 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
     }
   };
 
+  // ===== 创建分类 =====
+  const openCreateCategoryModal = () => {
+    setCreateCategoryName('');
+    setCreateCategoryModalOpen(true);
+  };
+
+  const handleCreateCategory = async () => {
+    if (!effectiveGamePath || !createCategoryName.trim()) return;
+
+    if (categories.includes(createCategoryName.trim())) {
+      notifications.show({
+        title: '错误',
+        message: '该分类已存在',
+        color: 'red',
+      });
+      return;
+    }
+
+    try {
+      setCreatingCategory(true);
+      const maichartsPath = `${effectiveGamePath}\\MaiCharts`;
+      await invoke('create_chart_category', {
+        maichartsDir: maichartsPath,
+        category: createCategoryName.trim(),
+      });
+
+      setCategories(prev => {
+        const updated = [...prev, createCategoryName.trim()].sort();
+        setChartsByCategory(prev2 => ({ ...prev2, [createCategoryName.trim()]: [] }));
+        return updated;
+      });
+
+      notifications.show({
+        title: '成功',
+        message: `分类「${createCategoryName.trim()}」已创建`,
+        color: 'green',
+      });
+
+      setCreateCategoryModalOpen(false);
+    } catch (error) {
+      console.error('创建分类失败:', error);
+      notifications.show({
+        title: '错误',
+        message: '创建分类失败: ' + String(error),
+        color: 'red',
+      });
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
+  // ===== 导入谱面 =====
+  const openImportModal = async () => {
+    if (!effectiveGamePath) return;
+
+    try {
+      const filePaths = await invoke<string[]>('pick_files');
+      if (filePaths.length === 0) return;
+
+      setSelectedFiles(filePaths);
+      setImportCategory(null);
+      setImportNewCategory('');
+      setImportResults(null);
+      setImportModalOpen(true);
+    } catch {
+      // 用户取消选择，忽略
+    }
+  };
+
+  const handleImport = async () => {
+    if (!effectiveGamePath) return;
+
+    const finalCategory = importCategory || importNewCategory.trim();
+    if (!finalCategory) {
+      notifications.show({
+        title: '错误',
+        message: '请选择或输入分类名称',
+        color: 'red',
+      });
+      return;
+    }
+
+    try {
+      setImporting(true);
+      const maichartsPath = `${effectiveGamePath}\\MaiCharts`;
+
+      const results = await invoke<ImportResult[]>('import_chart_zips', {
+        zipPaths: selectedFiles,
+        maichartsDir: maichartsPath,
+        category: finalCategory,
+      });
+
+      setImportResults(results);
+
+      const imported = results.filter(r => r.status === 'imported').length;
+      const skipped = results.filter(r => r.status === 'skipped').length;
+      const failed = results.filter(r => r.status === 'failed').length;
+
+      if (imported > 0) {
+        notifications.show({
+          title: '导入完成',
+          message: `成功导入 ${imported} 个谱面${skipped > 0 ? `，跳过 ${skipped} 个` : ''}${failed > 0 ? `，失败 ${failed} 个` : ''}`,
+          color: imported === results.length ? 'green' : 'yellow',
+        });
+      } else {
+        notifications.show({
+          title: '导入完成',
+          message: `没有谱面被导入${skipped > 0 ? `，跳过 ${skipped} 个` : ''}${failed > 0 ? `，失败 ${failed} 个` : ''}`,
+          color: 'yellow',
+        });
+      }
+
+      // 刷新谱面列表
+      loadCharts();
+    } catch (error) {
+      console.error('导入谱面失败:', error);
+      notifications.show({
+        title: '错误',
+        message: '导入谱面失败: ' + String(error),
+        color: 'red',
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const closeImportModal = () => {
+    setImportModalOpen(false);
+    if (importResults) {
+      // 有导入结果时刷新列表
+      loadCharts();
+    }
+  };
+
+  // ===== 删除谱面 =====
   const handleDeleteChart = async (chart: ChartInfo) => {
     if (!effectiveGamePath) return;
 
@@ -140,6 +297,7 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
     }
   };
 
+  // ===== 移动谱面 =====
   const handleMoveChart = async () => {
     if (!effectiveGamePath || !chartToMove) return;
 
@@ -211,6 +369,30 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
     setMoveModalOpen(true);
   };
 
+  const headerButtons = (
+    <Group gap="xs">
+      <Button
+        leftSection={<IconFolderPlus size={16} />}
+        onClick={openCreateCategoryModal}
+        variant="light"
+        size="xs"
+      >
+        创建分类
+      </Button>
+      <Button
+        leftSection={<IconUpload size={16} />}
+        onClick={openImportModal}
+        variant="light"
+        size="xs"
+      >
+        导入谱面
+      </Button>
+      <Button onClick={loadCharts} variant="light" size="xs">
+        刷新
+      </Button>
+    </Group>
+  );
+
   if (loading) {
     return (
       <Container size="xl" py="xl" style={{ position: 'relative', minHeight: 400 }}>
@@ -221,9 +403,62 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
 
   if (categories.length === 0) {
     return (
-      <Container size="xl" py="xl">
-        <Text c="dimmed">暂无谱面，请先下载谱面或确保 MaiCharts 目录存在</Text>
-      </Container>
+      <>
+        <Container size="xl" py="xl">
+          <Stack align="center" gap="md">
+            <Text c="dimmed">暂无谱面分类</Text>
+            <Group gap="xs">
+              <Button
+                leftSection={<IconFolderPlus size={16} />}
+                onClick={openCreateCategoryModal}
+                variant="light"
+                size="sm"
+              >
+                创建分类
+              </Button>
+              <Button
+                leftSection={<IconUpload size={16} />}
+                onClick={openImportModal}
+                variant="light"
+                size="sm"
+              >
+                导入谱面
+              </Button>
+            </Group>
+          </Stack>
+        </Container>
+
+        <Modal
+          opened={createCategoryModalOpen}
+          onClose={() => setCreateCategoryModalOpen(false)}
+          title="创建分类"
+        >
+          <Stack gap="md">
+            <TextInput
+              label="分类名称"
+              placeholder="输入新分类名称"
+              value={createCategoryName}
+              onChange={(e) => setCreateCategoryName(e.currentTarget.value)}
+              leftSection={<IconPlus size={16} />}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateCategory();
+              }}
+            />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setCreateCategoryModalOpen(false)}>
+                取消
+              </Button>
+              <Button
+                onClick={handleCreateCategory}
+                disabled={!createCategoryName.trim()}
+                loading={creatingCategory}
+              >
+                创建
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
+      </>
     );
   }
 
@@ -233,7 +468,7 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
         <Stack gap="md">
           <Group justify="space-between">
             <Text size="lg" fw={600}>本地谱面</Text>
-            <Button onClick={loadCharts} variant="light">刷新</Button>
+            {headerButtons}
           </Group>
 
           <Accordion multiple>
@@ -349,6 +584,140 @@ export function LocalCharts({ onRefresh, refreshTrigger }: LocalChartsProps) {
               移动
             </Button>
           </Group>
+        </Stack>
+      </Modal>
+
+      {/* 创建分类 */}
+      <Modal
+        opened={createCategoryModalOpen}
+        onClose={() => setCreateCategoryModalOpen(false)}
+        title="创建分类"
+      >
+        <Stack gap="md">
+          <TextInput
+            label="分类名称"
+            placeholder="输入新分类名称"
+            value={createCategoryName}
+            onChange={(e) => setCreateCategoryName(e.currentTarget.value)}
+            leftSection={<IconPlus size={16} />}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleCreateCategory();
+            }}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setCreateCategoryModalOpen(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={handleCreateCategory}
+              disabled={!createCategoryName.trim()}
+              loading={creatingCategory}
+            >
+              创建
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* 导入谱面 */}
+      <Modal
+        opened={importModalOpen}
+        onClose={closeImportModal}
+        title="导入谱面"
+        size="lg"
+      >
+        <Stack gap="md">
+          {!importResults ? (
+            <>
+              <div>
+                <Text size="sm" fw={500} mb="xs">
+                  已选择 {selectedFiles.length} 个文件：
+                </Text>
+                <Stack gap={4} style={{ maxHeight: 160, overflowY: 'auto' }}>
+                  {selectedFiles.map((filePath, index) => (
+                    <Text key={index} size="xs" c="dimmed" truncate>
+                      {filePath.split('\\').pop() || filePath.split('/').pop()}
+                    </Text>
+                  ))}
+                </Stack>
+              </div>
+
+              <Select
+                label="导入到分类"
+                placeholder="选择已有分类"
+                data={categories}
+                value={importCategory}
+                onChange={(value) => {
+                  setImportCategory(value);
+                  setImportNewCategory('');
+                }}
+                searchable
+                clearable
+                disabled={!!importNewCategory.trim()}
+              />
+
+              <Divider label="或创建新分类" labelPosition="center" />
+
+              <TextInput
+                placeholder="输入新分类名称"
+                value={importNewCategory}
+                onChange={(e) => {
+                  setImportNewCategory(e.target.value);
+                  setImportCategory(null);
+                }}
+                leftSection={<IconPlus size={16} />}
+                disabled={!!importCategory}
+              />
+
+              <Group justify="flex-end" mt="md">
+                <Button variant="default" onClick={closeImportModal}>
+                  取消
+                </Button>
+                <Button
+                  onClick={handleImport}
+                  disabled={!(importCategory || importNewCategory.trim())}
+                  loading={importing}
+                  leftSection={<IconUpload size={16} />}
+                >
+                  导入 ({selectedFiles.length} 个文件)
+                </Button>
+              </Group>
+            </>
+          ) : (
+            <>
+              <Text size="sm" fw={500}>导入结果：</Text>
+              <Stack gap={4} style={{ maxHeight: 300, overflowY: 'auto' }}>
+                {importResults.map((result, index) => (
+                  <Group key={index} gap="xs" wrap="nowrap">
+                    {result.status === 'imported' ? (
+                      <IconCheck size={16} color="var(--mantine-color-green-6)" />
+                    ) : result.status === 'skipped' ? (
+                      <IconAlertCircle size={16} color="var(--mantine-color-yellow-6)" />
+                    ) : (
+                      <IconX size={16} color="var(--mantine-color-red-6)" />
+                    )}
+                    <Text size="xs" fw={500}>
+                      {result.file_name}
+                    </Text>
+                    {result.chart_name && (
+                      <Text size="xs" c="dimmed">
+                        → {result.chart_name}
+                      </Text>
+                    )}
+                    {result.reason && (
+                      <Text size="xs" c="dimmed">
+                        ({result.reason})
+                      </Text>
+                    )}
+                  </Group>
+                ))}
+              </Stack>
+
+              <Group justify="flex-end" mt="md">
+                <Button onClick={closeImportModal}>完成</Button>
+              </Group>
+            </>
+          )}
         </Stack>
       </Modal>
     </>

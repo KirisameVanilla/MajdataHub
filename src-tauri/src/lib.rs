@@ -106,6 +106,7 @@ pub fn run() {
             execute_bat_file,
             get_launch_options,
             launch_game,
+            pick_files,
             // 谱面管理相关命令
             list_chart_categories,
             list_charts_in_category,
@@ -113,6 +114,7 @@ pub fn run() {
             move_chart,
             create_chart_category,
             create_directory,
+            import_chart_zips,
             // 皮肤管理相关命令
             list_skins,
             delete_skin,

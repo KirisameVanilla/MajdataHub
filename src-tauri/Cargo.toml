@@ -36,6 +36,7 @@ chrono = "0.4"
 rayon = "1.10"
 walkdir = "2"
 tauri-plugin-process = "2"
+rfd = "0.15"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
